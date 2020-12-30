@@ -2,22 +2,22 @@ import pygame
 import os
 import sys
 
+from socket import *
+
+udp_socket = socket(AF_INET, SOCK_DGRAM)
+host = '26.220.153.222'
+port = 777
+addr = (host, port)
+# udp_socket.sendto('присоединился;OlayBalalay'.encode(), addr)
+
+
+def sendCoords(size, orientation, x, y):
+    udp_socket.sendto('shipSet;{};{};{};{}'.format(str(size), str(orientation), str(x), str(y)).encode(), addr)
+
 
 def resetShips():
-    ship_4.rect.x, ship_4.rect.y = 1400, 40
-    ship_3_1.rect.x, ship_3_1.rect.y = 1400, 120
-    ship_3_2.rect.x, ship_3_2.rect.y = 1600, 120
-    ship_2_1.rect.x, ship_2_1.rect.y = 1400, 200
-    ship_2_2.rect.x, ship_2_2.rect.y = 1520, 200
-    ship_2_3.rect.x, ship_2_3.rect.y = 1640, 200
-    ship_1_1.rect.x, ship_1_1.rect.y = 1400, 280
-    ship_1_2.rect.x, ship_1_2.rect.y = 1480, 280
-    ship_1_3.rect.x, ship_1_3.rect.y = 1560, 280
-    ship_1_4.rect.x, ship_1_4.rect.y = 1640, 280
-
-
-def resetShip(ship):
-    ship.rect.x, ship.rect.y = ship.defX, ship.defY
+    for ship in ships.sprites():
+        ship.reset()
 
 
 def load_image(name, colorkey=None):
@@ -46,6 +46,9 @@ class Gamefield(pygame.sprite.Sprite):
         return x, y
 
     def getClosest(self, x, y):
+        if not (self.rect.x + 40 <= x <= self.rect.x + self.rect.width
+                and self.rect.y + 40 <= y <= self.rect.y + self.rect.height):
+            return None
         i = x - self.rect.x - 40
         j = y - self.rect.y - 40
         if i % 40 <= 20:
@@ -60,10 +63,15 @@ class Gamefield(pygame.sprite.Sprite):
 
 
 class Ship(pygame.sprite.Sprite):
-    def __init__(self, *group, size):
+    def __init__(self, *group, size, x, y):
         super().__init__(*group)
         self.image = load_image("sprites/ship-" + str(size) + ".png")
         self.rect = self.image.get_rect()
+        self.size = size
+        self.rect.x = x
+        self.rect.y = y
+        self.i = None
+        self.j = None
         self.defX = self.rect.x
         self.defY = self.rect.y
         self.size = size
@@ -71,10 +79,65 @@ class Ship(pygame.sprite.Sprite):
         self.vertical = False
         self.isSet = False
 
+    def get_coords(self):
+        return self.rect.x, self.rect.y
+
+    def reset(self):
+        self.isSet = False
+        self.i = None
+        self.j = None
+        self.rect.x = self.defX
+        self.rect.y = self.defY
+        if self.vertical:
+            self.rotate()
+
+    def set_cell(self, i, j):
+        self.i = i
+        self.j = j
+        self.rect.x = myField.rect.x + 40 + 40 * i
+        self.rect.y = myField.rect.y + 40 + 40 * j
+
+    def rotate(self):
+        self.vertical = not self.vertical
+        x, y = self.rect.x, self.rect.y
+        self.image = pygame.transform.rotate(self.image, 90)
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = x, y
+
+
+class AcceptButton(pygame.sprite.Sprite):
+    def __init__(self, group):
+        super().__init__(group)
+        self.image = load_image("sprites/buttonAccept.png")
+        self.rect = self.image.get_rect()
+        all_sprites.add(self)
+
+    def press(self):
+        for ship in ships.sprites():
+            if not ship.isSet:
+                return
+        packet = "shipPositions;"
+        for ship in ships.sprites():
+            packet += "|".join([str(ship.size), str(ship.vertical), str(ship.i), str(ship.j)])
+            packet += "$"
+        udp_socket.sendto(packet.encode(), addr)
+
+
+class ResetButton(pygame.sprite.Sprite):
+    def __init__(self, group):
+        super().__init__(group)
+        self.image = load_image("sprites/reset.png")
+        self.rect = self.image.get_rect()
+        all_sprites.add(self)
+
+    def press(self):
+        resetShips()
+
 
 pygame.init()
 all_sprites = pygame.sprite.Group()
 ships = pygame.sprite.Group()
+buttons = pygame.sprite.Group()
 
 pygame.display.set_caption('Морской бой')
 infoObject = pygame.display.Info()
@@ -97,26 +160,23 @@ opponentField = Gamefield()
 
 # Корабли
 
-ship_4 = Ship(ships, size=4)
-ship_4.rect = ship_4.rect.move(1400, 40)
-ship_3_1 = Ship(ships, size=3)
-ship_3_1.rect = ship_3_1.rect.move(1400, 120)
-ship_3_2 = Ship(ships, size=3)
-ship_3_2.rect = ship_3_2.rect.move(1600, 120)
-ship_2_1 = Ship(ships, size=2)
-ship_2_1.rect = ship_2_1.rect.move(1400, 200)
-ship_2_2 = Ship(ships, size=2)
-ship_2_2.rect = ship_2_2.rect.move(1520, 200)
-ship_2_3 = Ship(ships, size=2)
-ship_2_3.rect = ship_2_3.rect.move(1640, 200)
-ship_1_1 = Ship(ships, size=1)
-ship_1_1.rect = ship_1_1.rect.move(1400, 280)
-ship_1_2 = Ship(ships, size=1)
-ship_1_2.rect = ship_1_2.rect.move(1480, 280)
-ship_1_3 = Ship(ships, size=1)
-ship_1_3.rect = ship_1_3.rect.move(1560, 280)
-ship_1_4 = Ship(ships, size=1)
-ship_1_4.rect = ship_1_4.rect.move(1640, 280)
+ship_4 = Ship(ships, size=4, x=1400, y=40)
+ship_3_1 = Ship(ships, size=3, x=1400, y=120)
+ship_3_2 = Ship(ships, size=3, x=1600, y=120)
+ship_2_1 = Ship(ships, size=2, x=1400, y=200)
+ship_2_2 = Ship(ships, size=2, x=1520, y=200)
+ship_2_3 = Ship(ships, size=2, x=1640, y=200)
+ship_1_1 = Ship(ships, size=1, x=1400, y=280)
+ship_1_2 = Ship(ships, size=1, x=1480, y=280)
+ship_1_3 = Ship(ships, size=1, x=1560, y=280)
+ship_1_4 = Ship(ships, size=1, x=1640, y=280)
+
+# Кнопки
+
+resetButton = ResetButton(buttons)
+resetButton.rect = resetButton.rect.move(1400, 400)
+acceptButton = AcceptButton(buttons)
+acceptButton.rect = acceptButton.rect.move(1560, 400)
 
 ship_on_cursor = None
 ships_set = False
@@ -132,16 +192,29 @@ while running:
                 for ship in ships.sprites():
                     if ship.rect.collidepoint(pygame.mouse.get_pos()):
                         ship_on_cursor = ship
+                for button in buttons.sprites():
+                    if button.rect.collidepoint(pygame.mouse.get_pos()[0], pygame.mouse.get_pos()[1]):
+                        button.press()
+            if pygame.mouse.get_pressed()[2]:
+                for ship in ships.sprites():
+                    if ship.rect.collidepoint(pygame.mouse.get_pos()[0], pygame.mouse.get_pos()[1]) and ship.isSet:
+                        ship.rotate()
         if event.type == pygame.MOUSEMOTION:
             if ship_on_cursor is not None:
                 ship_on_cursor.rect = ship_on_cursor.rect.move(pygame.mouse.get_rel())
         if event.type == pygame.MOUSEBUTTONUP:
             if ship_on_cursor is not None:
                 if not pygame.mouse.get_pressed()[0]:
+                    x, y = ship_on_cursor.get_coords()
+                    if myField.getClosest(x, y) is None:
+                        ship_on_cursor.reset()
+                    else:
+                        ship_on_cursor.set_cell(myField.getClosest(x, y)[0], myField.getClosest(x, y)[1])
+                        ship_on_cursor.isSet = True
+
                     ship_on_cursor = None
     screen.fill((0, 0, 0))
-    if ship_on_cursor is not None:
-        pygame.mouse.get_rel()
+    pygame.mouse.get_rel()
     all_sprites.draw(screen)
     all_sprites.update()
     pygame.display.flip()
