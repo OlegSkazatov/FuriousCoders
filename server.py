@@ -23,6 +23,8 @@ class RoomStatus(enum.Enum):
 class CellType(enum.Enum):
     Empty = 0
     Blocked = 11
+    Shot = 12
+    Miss = 13
     Ship_4 = 1
     Ship_3_1 = 2
     Ship_3_2 = 3
@@ -38,9 +40,11 @@ class CellType(enum.Enum):
 class Gamefield:
     def __init__(self):
         self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
+        self.shipPositions = ""
         self.isEmpty = True
 
     def setShips(self, string):
+        self.shipPositions = string
         ships = string.split("$")
         for i in range(len(ships)):
             size, vertical, x, y = ships[i].split("|")
@@ -82,6 +86,15 @@ class Player:
         socket.sendto(packet.encode(), self.addr)
 
     def disconnect(self):
+        global players, rooms
+        if self.room is not None:
+            self.room.members.remove(self)
+            self.room.update()
+            self.room.sendMessage(self.name + " left")
+            if self.room.hostPlayer is self:
+                for i in range(len(self.room.members)):
+                    self.room.kickPlayer(i)
+                rooms.remove(self.room)
         if self in players:
             players.remove(self)
 
@@ -132,6 +145,7 @@ class Room:
                 p.sendPacket(socket, "chat_update;" + message)
 
     def kickPlayer(self, index):
+        global players
         p = self.members[index]
         if p != "":
             p.sendPacket(socket, "room_kick")
@@ -197,6 +211,21 @@ class MyUDPHandler(DatagramRequestHandler):
                     if not (r.status == RoomStatus.GAME and r.members.index(p) > 1):
                         r.sendMessage("{}: ".format(p.name) + message)
 
+        if ptype == "quit_room":
+            global players, rooms
+            p = getPlayer(self.client_address)
+            if p is not None:
+                r = p.room
+                if r is not None:
+                    r.members.remove(p)
+                    r.update()
+                    r.sendMessage(p.name + " left")
+                    if r.hostPlayer is p:
+                        for i in range(len(r.members)):
+                            r.kickPlayer(i)
+                        rooms.remove(r)
+                players.remove(p)
+
         if ptype == "start_game":
             p = getPlayer(self.client_address)
             if p.room.status == RoomStatus.WAIT and p.room.hostPlayer.addr == p.addr:
@@ -208,10 +237,12 @@ class MyUDPHandler(DatagramRequestHandler):
                     for i in range(len(r.members)):
                         pl = r.members[i]
                         if pl != "":
-                            if i <= 1:
-                                pl.sendPacket(socket, "game_start;player")
+                            if i == 0:
+                                pl.sendPacket(socket, "game_start;player;" + pl.name + ";" + r.members[1].name)
+                            elif i == 1:
+                                pl.sendPacket(socket, "game_start;player;" + pl.name + ";" + r.members[0].name)
                             else:
-                                pl.sendPacket(socket, "game_start;spectator")
+                                pl.sendPacket(socket, "game_start;spectator;" + r.members[0].name + r.members[1].name)
 
         if ptype == "kickPlayer":
             p = getPlayer(self.client_address)
@@ -261,6 +292,39 @@ class MyUDPHandler(DatagramRequestHandler):
                                 r.setMove(randint(0, 1))
                         except ValueError:
                             pass
+        if ptype == "shot":
+            p = getPlayer(self.client_address)
+            if p is not None:
+                r = p.room
+                if r is not None:
+                    if r.members.index(p) == r.move:
+                        i, j = list(map(int, packet.split(";")[1:]))
+                        if r.move == 0:
+                            pl = r.members[1]
+                            cell = r.field2[j][i]
+                            if cell == CellType.Blocked or cell == CellType.Empty:
+                                p.sendPacket(socket, "shot_result;miss")
+                                pl.sendPacket(socket, "got_shot;miss;" + str(i) + ";" + str(j))
+                                r.field2[j][i] = CellType.Miss
+                                r.setMove(1)
+                            elif cell == CellType.Miss or cell == CellType.Shot:
+                                p.sendPacket(socket, "shot_result;deny")
+                            else:
+                                p.sendPacket(socket, "shot_result;hit")
+                                pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
+                                r.field2[j][i] = CellType.Shot
+                        else:
+                            pl = r.members[0]
+                            cell = r.field1[j][i]
+                            if cell == CellType.Blocked or cell == CellType.Empty:
+                                p.sendPacket("shot_result;miss")
+                                r.field1[j][i] = CellType.Miss
+                                r.setMove(0)
+                            elif cell == CellType.Miss or cell == CellType.Shot:
+                                p.sendPacket(socket, "shot_result;deny")
+                            else:
+                                p.sendPacket(socket, "shot_result;hit")
+                                r.field1[j][i] = CellType.Shot
 
 
 if __name__ == "__main__":
