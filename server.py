@@ -2,7 +2,7 @@
 
 from socketserver import *
 import enum
-from random import choice
+from random import choice, randint
 import time
 
 host = '26.153.209.176'
@@ -48,16 +48,21 @@ class Gamefield:
         self.isEmpty = False
 
     def setShip(self, size, vertical, x, y, i):
+        vertical = vertical == "True"
         if vertical:
             for j in range(int(size) + 2):
                 for i1 in range(-1, 2):
-                    self.field[int(y) + j - 1][int(x) + i1] = CellType.Blocked
+                    h, w = int(y) + j - 1, int(x) + i1
+                    if 0 <= h <= 9 and 0 <= w <= 9:
+                        self.field[h][w] = CellType.Blocked
             for j in range(int(size)):
                 self.field[int(y) + j][int(x)] = CellType(i)
         else:
             for j in range(int(size) + 2):
                 for i1 in range(-1, 2):
-                    self.field[int(y) + i1][int(x) + j - 1] = CellType.Blocked
+                    h, w = int(y) + i1, int(x) + j - 1
+                    if 0 <= h <= 9 and 0 <= w <= 9:
+                        self.field[h][w] = CellType.Blocked
             for j in range(int(size)):
                 self.field[int(y)][int(x) + j] = CellType(i)
 
@@ -102,6 +107,13 @@ class Room:
         player.sendPacket(socket, packet)
         self.update()
 
+    def setMove(self, move):
+        self.move = move
+        self.members[move].sendPacket(socket, "move;your")
+        for i in range(self.members):
+            if i != move:
+                self.members[i].sendPacket(socket, "move;" + str(move))
+
     def update(self):
         packet = "room_update;"
         names = []
@@ -123,9 +135,7 @@ class Room:
         p = self.members[index]
         if p != "":
             p.sendPacket(socket, "room_kick")
-            self.members = self.members[:index] + self.members[index + 1:]
-            while len(self.members) < 5:
-                self.members.append("")
+            self.members[index] = ""
             self.sendMessage(p.name + " was kicked by the host")
             self.update()
             p.room = None
@@ -161,7 +171,6 @@ class MyUDPHandler(DatagramRequestHandler):
             p = getPlayer(self.client_address)
             if p is not None:
                 p.disconnect()
-                print("disconnected")
         if ptype == "createroom":
             p = getPlayer(self.client_address)
             if p is None:
@@ -173,15 +182,20 @@ class MyUDPHandler(DatagramRequestHandler):
             if p is None:
                 socket.sendto("not_exist".encode(), self.client_address)
             else:
-                r = choice(list(filter(lambda x: len(x.members) < 5, rooms)))
-                r.connectPlayer(p)
+                rs = list(filter(lambda x: "" in x.members, rooms))
+                if len(rs) != 0:
+                    r = choice(rs)
+                    r.connectPlayer(p)
+                else:
+                    pass
         if ptype == "chat_message":
             message = ";".join(packet.split(";")[1:])
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
                 if r is not None:
-                    r.sendMessage("{}: ".format(p.name) + message)
+                    if not (r.status == RoomStatus.GAME and r.members.index(p) > 1):
+                        r.sendMessage("{}: ".format(p.name) + message)
 
         if ptype == "start_game":
             p = getPlayer(self.client_address)
@@ -204,48 +218,49 @@ class MyUDPHandler(DatagramRequestHandler):
             if p is not None:
                 r = p.room
                 if r is not None:
-                    if r.hostPlayer.addr == p.addr:
-                        if r.hostPlayer is not p:
+                    if r.hostPlayer.addr[0] == p.addr[0]:
+                        if r.hostPlayer is not r.members[int(packet.split(";")[1])]:
                             r.kickPlayer(int(packet.split(";")[1]))
         if ptype == "makeHost":
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
                 if r is not None:
-                    if r.hostPlayer.addr == p.addr:
-                        if r.hostPlayer is not p:
+                    if r.hostPlayer.addr[0] == p.addr[0]:
+                        if r.hostPlayer is not r.members[int(packet.split(";")[1])]:
                             p.sendPacket(socket, "lost_host")
                             player = r.members[int(packet.split(";")[1])]
                             r.hostPlayer = player
                             player.sendPacket(socket, "got_host")
                             r.sendMessage(player.name + " has become the host")
 
-        if ptype == "ship_positions":
+        if ptype == "shipPositions":
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
                 if r is not None:
-                    if r.status == RoomStatus.WAIT:
+                    if r.status == RoomStatus.SHIPSETTING:
                         try:
                             index = r.members.index(p)
                             if index == 0:
                                 r.field1.setShips(packet.split(";")[1])
                             elif index == 1:
                                 r.field2.setShips(packet.split(";")[1])
-                            for spectator in r.members[2:]: # Отправка расположения кораблей наблюдателям
+                            for spectator in r.members[2:]:  # Отправка расположения кораблей наблюдателям
                                 if spectator != "":
                                     spectator.sendPacket("ships_pos;" + str(index) + ";" + packet.split(";")[1])
                             if r.field1.isEmpty or r.field2.isEmpty:
                                 for player in r.members:
                                     if player != "":
-                                        p.sendPacket(socket, "ships_accept;wait")
+                                        player.sendPacket(socket, "ships_accept;wait")
                             else:
                                 for player in r.members:
                                     if player != "":
-                                        p.sendPacket(socket, "ships_accept;start")
+                                        player.sendPacket(socket, "ships_accept;start")
                                 r.status = RoomStatus.GAME
+                                r.setMove(randint(0, 1))
                         except ValueError:
-                            print("Not in members")
+                            pass
 
 
 if __name__ == "__main__":

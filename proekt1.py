@@ -75,6 +75,7 @@ class Gamefield(pygame.sprite.Sprite):
         self.image = load_image("sprites/game_field.png")
         self.rect = self.image.get_rect()
         self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
+        self.ships = []
 
     def get_cell(self, mousepos):
         x = mousepos[0] - self.rect.x - 30
@@ -108,9 +109,11 @@ class Gamefield(pygame.sprite.Sprite):
         for cell in ship.get_outer_cells():
             i, j = cell
             self.field[j][i] = CellType.Blocked
+        self.ships.append(ship)
 
     def clearField(self):
         self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
+        self.ships.clear()
 
 
 class Ship(pygame.sprite.Sprite):
@@ -139,6 +142,8 @@ class Ship(pygame.sprite.Sprite):
 
     def get_cells(self):
         cells = []
+        if self.i is None or self.j is None:
+            return None
         if self.vertical:
             for n in range(self.size):
                 cells.append((self.i, self.j + n))
@@ -190,13 +195,21 @@ class Ship(pygame.sprite.Sprite):
 
     def isLegit(self):
         cells = self.get_cells()
+        if cells is None:
+            return None
         for cell in cells:
             i, j = cell
             if not (0 <= i <= 9 and 0 <= j <= 9):
                 self.reset()
                 return None
-            if self.myField.field[j][i] != CellType.Empty:
+            if self.myField.field[j][i] == CellType.Blocked:
                 return False
+        for ship in self.myField.ships:
+            if ship is not self:
+                this = set(self.get_cells())
+                other = set(ship.get_cells())
+                if len(list(this.intersection(other))):
+                    return False
         return True
 
     def setRed(self, red, force=False):
@@ -485,6 +498,7 @@ class Room(Window):
         sendPacket("start_game")
 
     def handlePacket(self, packet):
+        global activeWindow
         super().handlePacket(packet)
         ptype = packet.split(";")[0]
         if ptype == "room_update":
@@ -510,11 +524,9 @@ class Room(Window):
             self.button_kick.remove()
             self.button_makeHost.remove()
         if ptype == "room_kick":
-            global activeWindow
             activeWindow = RoomChoice()
             activeWindow.set()
-        if ptype == "game_start;":
-            global activeWindow
+        if ptype == "game_start":
             activeWindow = Game(spectator=packet.split(";")[1] == "spectator")
             activeWindow.set()
 
@@ -629,14 +641,14 @@ class RoomChoice(Window):
 class Game(Window):
     def __init__(self, spectator=True):
         super().__init__()
-        self.ptypes = ["ships_accept"]
+        self.ptypes = ["chat_update", "ships_accept"]
         pygame.mixer.music.unload()
         pygame.mixer.music.load('sounds/bg_music2.mp3')
         pygame.mixer.music.set_volume(volume * 0.1)
         pygame.mixer.music.play(-1)
         self.shipsSet = False
         self.mesText = ""
-        self.message = pygame.font.SysFont("comicsansms", 54).render(self.mesText, False, (0, 0, 0))
+        self.message = pygame.font.SysFont("comicsansms", 30).render(self.mesText, False, (0, 0, 0))
 
         self.ships = pygame.sprite.Group()
         self.opponent_ships = pygame.sprite.Group()
@@ -644,6 +656,8 @@ class Game(Window):
         self.ship_on_cursor = None
         self.cellsize = 30
         self.spectator = spectator
+
+        self.chat = Chat(900, 420, 600, 200, lines=20, font=pygame.font.SysFont('comicsansms', 20))
 
         self.background = pygame.sprite.Sprite(self.sprites)
         self.background.image = load_image("sprites/game_bg.png")
@@ -657,13 +671,15 @@ class Game(Window):
                 for j in range(5 - i):
                     ship = Ship(self.ships, self.sprites, i, 0, 0, myField=self.myField)
                     ship_o = Ship(self.ships, self.sprites, i, 0, 0, myField=self.opponentField)
+        else:
+            self.inputMessage = InputBox(910, 770, 400, 30, drawrect=False, text="Type here", lenlimit=30)
+            self.inputMessage.FONT = pygame.font.SysFont("comicsansms", 24)
             self.acceptButton = Button(self.buttons, self.sprites, load_image("sprites/buttonAccept.png"))
             self.acceptButton.rect = self.acceptButton.rect.move(39 * self.cellsize, 10 * self.cellsize)
             self.acceptButton.press = self.accept
             self.resetButton = Button(self.buttons, self.sprites, load_image("sprites/reset.png"))
             self.resetButton.rect = self.resetButton.rect.move(35 * self.cellsize, 10 * self.cellsize)
             self.resetButton.press = self.resetShips
-        else:
             self.ship_4 = Ship(self.ships, self.sprites, size=4, x=35 * self.cellsize, y=self.cellsize,
                                myField=self.myField)
             self.ship_3_1 = Ship(self.ships, self.sprites, size=3, x=35 * self.cellsize, y=3 * self.cellsize,
@@ -712,8 +728,9 @@ class Game(Window):
             if ship.isSet:
                 self.myField.setShip(ship)
 
-    def check_click(self, mouse_pos):
-        super().check_click(mouse_pos)
+    def check_click(self, event):
+        super().check_click(event)
+        self.inputMessage.handle_event(event)
         if self.shipsSet or self.spectator:
             return
         if pygame.mouse.get_pressed()[0]:
@@ -762,6 +779,9 @@ class Game(Window):
                     self.mesText = "Opponent is ready!"
             elif verdict == "start":
                 self.animateStart()
+        if ptype == "chat_update":
+            message = packet.split(";")[1]
+            self.chat.addLine(message)
         if ptype == "ships_pos" and self.spectator:
             num = int(packet.split(";")[1])
             if num == 0:
@@ -778,22 +798,33 @@ class Game(Window):
                 sprite.setCell(x, y)
                 field.setShip(sprite)
 
-
     def animateShot(self, field, i, j):
         pass
 
     def animateStart(self):
         pass
 
-
     def check_move(self):
         if self.ship_on_cursor is not None:
             self.ship_on_cursor.rect = self.ship_on_cursor.rect.move(pygame.mouse.get_rel())
 
     def draw(self):
-        pygame.mouse.get_rel() # Это нужно вызывать постоянно, чтобы корабли двигались нормально, поэтому это здесь
+        pygame.mouse.get_rel()  # Это нужно вызывать постоянно, чтобы корабли двигались нормально, поэтому это здесь
         self.message = pygame.font.SysFont("comicsansms", 54).render(self.mesText, False, (0, 0, 0))
-        screen.blit(self.message, (720 - self.message.get_width() // 2, 400))
+        screen.blit(self.message, (50, 760 - self.message.get_height()))
+        self.chat.draw()
+        if not self.spectator:
+            screen.blit(pygame.font.SysFont("comicsansms", 36).render(">", False, (0, 0, 0)), (900, 765))
+            self.inputMessage.draw(screen)
+
+    def check_keypress(self, event):
+        if not self.spectator:
+            self.inputMessage.handle_event(event)
+            if event.key == pygame.K_RETURN and self.inputMessage.active and self.inputMessage.text \
+                    != "Type here" and self.inputMessage.text != "":
+                sendPacket("chat_message;" + self.inputMessage.text)
+                self.inputMessage.text = ""
+
 
 
 def cikle():
@@ -849,9 +880,6 @@ while running:
             activeWindow.check_release(pygame.mouse.get_pos())
         if event.type == pygame.KEYDOWN:
             activeWindow.check_keypress(event)
-            if event.key == pygame.K_w:
-                activeWindow = Game()
-                activeWindow.set()
     screen.fill((0, 0, 0))
     all_sprites.draw(screen)
     all_sprites.update()
