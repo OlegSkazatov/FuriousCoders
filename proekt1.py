@@ -134,6 +134,9 @@ class Ship(pygame.sprite.Sprite):
     def get_coords(self):
         return self.rect.x, self.rect.y
 
+    def remove(self):
+        self.rect.x, self.rect.y = 1450, 820
+
     def get_cells(self):
         cells = []
         if self.vertical:
@@ -294,6 +297,10 @@ class Window:
 class Menu(Window):
     def __init__(self):
         super().__init__()
+        pygame.mixer.music.unload()
+        pygame.mixer.music.load('sounds/bg_music.mp3')
+        pygame.mixer.music.set_volume(volume * 0.1)
+        pygame.mixer.music.play(-1)
 
         self.background = pygame.sprite.Sprite(self.sprites)
         self.background.image = load_image("sprites/background.png")
@@ -506,6 +513,10 @@ class Room(Window):
             global activeWindow
             activeWindow = RoomChoice()
             activeWindow.set()
+        if ptype == "game_start;":
+            global activeWindow
+            activeWindow = Game(spectator=packet.split(";")[1] == "spectator")
+            activeWindow.set()
 
     def check_keypress(self, event):
         self.inputMessage.handle_event(event)
@@ -616,12 +627,23 @@ class RoomChoice(Window):
 
 
 class Game(Window):
-    def __init__(self):
+    def __init__(self, spectator=True):
         super().__init__()
+        self.ptypes = ["ships_accept"]
+        pygame.mixer.music.unload()
+        pygame.mixer.music.load('sounds/bg_music2.mp3')
+        pygame.mixer.music.set_volume(volume * 0.1)
+        pygame.mixer.music.play(-1)
+        self.shipsSet = False
+        self.mesText = ""
+        self.message = pygame.font.SysFont("comicsansms", 54).render(self.mesText, False, (0, 0, 0))
+
         self.ships = pygame.sprite.Group()
+        self.opponent_ships = pygame.sprite.Group()
         self.buttons = pygame.sprite.Group()
         self.ship_on_cursor = None
         self.cellsize = 30
+        self.spectator = spectator
 
         self.background = pygame.sprite.Sprite(self.sprites)
         self.background.image = load_image("sprites/game_bg.png")
@@ -630,34 +652,38 @@ class Game(Window):
         self.opponentField = Gamefield(self.sprites)
         self.myField.rect = self.myField.rect.move(self.cellsize, self.cellsize - 1)
         self.opponentField.rect = self.opponentField.rect.move(20 * self.cellsize, self.cellsize - 1)
-
-        self.ship_4 = Ship(self.ships, self.sprites, size=4, x=35 * self.cellsize, y=self.cellsize,
-                           myField=self.myField)
-        self.ship_3_1 = Ship(self.ships, self.sprites, size=3, x=35 * self.cellsize, y=3 * self.cellsize,
-                             myField=self.myField)
-        self.ship_3_2 = Ship(self.ships, self.sprites, size=3, x=40 * self.cellsize, y=3 * self.cellsize,
-                             myField=self.myField)
-        self.ship_2_1 = Ship(self.ships, self.sprites, size=2, x=35 * self.cellsize, y=5 * self.cellsize,
-                             myField=self.myField)
-        self.ship_2_2 = Ship(self.ships, self.sprites, size=2, x=38 * self.cellsize, y=5 * self.cellsize,
-                             myField=self.myField)
-        self.ship_2_3 = Ship(self.ships, self.sprites, size=2, x=41 * self.cellsize, y=5 * self.cellsize,
-                             myField=self.myField)
-        self.ship_1_1 = Ship(self.ships, self.sprites, size=1, x=35 * self.cellsize, y=7 * self.cellsize,
-                             myField=self.myField)
-        self.ship_1_2 = Ship(self.ships, self.sprites, size=1, x=37 * self.cellsize, y=7 * self.cellsize,
-                             myField=self.myField)
-        self.ship_1_3 = Ship(self.ships, self.sprites, size=1, x=39 * self.cellsize, y=7 * self.cellsize,
-                             myField=self.myField)
-        self.ship_1_4 = Ship(self.ships, self.sprites, size=1, x=41 * self.cellsize, y=7 * self.cellsize,
-                             myField=self.myField)
-
-        self.acceptButton = Button(self.buttons, self.sprites, load_image("sprites/buttonAccept.png"))
-        self.acceptButton.rect = self.acceptButton.rect.move(39 * self.cellsize, 10 * self.cellsize)
-        self.acceptButton.press = self.accept
-        self.resetButton = Button(self.buttons, self.sprites, load_image("sprites/reset.png"))
-        self.resetButton.rect = self.resetButton.rect.move(35 * self.cellsize, 10 * self.cellsize)
-        self.resetButton.press = self.resetShips
+        if self.spectator:
+            for i in range(1, 5):
+                for j in range(5 - i):
+                    ship = Ship(self.ships, self.sprites, i, 0, 0, myField=self.myField)
+                    ship_o = Ship(self.ships, self.sprites, i, 0, 0, myField=self.opponentField)
+            self.acceptButton = Button(self.buttons, self.sprites, load_image("sprites/buttonAccept.png"))
+            self.acceptButton.rect = self.acceptButton.rect.move(39 * self.cellsize, 10 * self.cellsize)
+            self.acceptButton.press = self.accept
+            self.resetButton = Button(self.buttons, self.sprites, load_image("sprites/reset.png"))
+            self.resetButton.rect = self.resetButton.rect.move(35 * self.cellsize, 10 * self.cellsize)
+            self.resetButton.press = self.resetShips
+        else:
+            self.ship_4 = Ship(self.ships, self.sprites, size=4, x=35 * self.cellsize, y=self.cellsize,
+                               myField=self.myField)
+            self.ship_3_1 = Ship(self.ships, self.sprites, size=3, x=35 * self.cellsize, y=3 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_3_2 = Ship(self.ships, self.sprites, size=3, x=40 * self.cellsize, y=3 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_2_1 = Ship(self.ships, self.sprites, size=2, x=35 * self.cellsize, y=5 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_2_2 = Ship(self.ships, self.sprites, size=2, x=38 * self.cellsize, y=5 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_2_3 = Ship(self.ships, self.sprites, size=2, x=41 * self.cellsize, y=5 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_1_1 = Ship(self.ships, self.sprites, size=1, x=35 * self.cellsize, y=7 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_1_2 = Ship(self.ships, self.sprites, size=1, x=37 * self.cellsize, y=7 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_1_3 = Ship(self.ships, self.sprites, size=1, x=39 * self.cellsize, y=7 * self.cellsize,
+                                 myField=self.myField)
+            self.ship_1_4 = Ship(self.ships, self.sprites, size=1, x=41 * self.cellsize, y=7 * self.cellsize,
+                                 myField=self.myField)
 
     def resetShips(self):
         for ship in self.ships.sprites():
@@ -665,14 +691,20 @@ class Game(Window):
         self.updateMyField()
 
     def accept(self):
+        if self.spectator:
+            return
         for ship in self.ships.sprites():
             if not ship.isSet or not ship.isLegit():
                 return
         packet = "shipPositions;"
+        ships = []
         for ship in self.ships.sprites():
-            packet += "|".join([str(ship.size), str(ship.vertical), str(ship.i), str(ship.j)])
-            packet += "$"
+            ships.append("|".join([str(ship.size), str(ship.vertical), str(ship.i), str(ship.j)]))
+        packet += "$".join(ships)
         sendPacket(packet)
+        self.shipsSet = True
+        self.resetButton.remove()
+        self.acceptButton.remove()
 
     def updateMyField(self):
         self.myField.clearField()
@@ -682,6 +714,8 @@ class Game(Window):
 
     def check_click(self, mouse_pos):
         super().check_click(mouse_pos)
+        if self.shipsSet or self.spectator:
+            return
         if pygame.mouse.get_pressed()[0]:
             for ship in self.ships.sprites():
                 if ship.rect.collidepoint(pygame.mouse.get_pos()):
@@ -716,12 +750,50 @@ class Game(Window):
 
                 self.ship_on_cursor = None
 
+    def handlePacket(self, packet):
+        super().handlePacket(packet)
+        ptype = packet.split(";")[0]
+        if ptype == "ships_accept":
+            verdict = packet.split(";")[1]
+            if verdict == "wait" and not self.spectator:
+                if self.shipsSet:
+                    self.mesText = "Waiting for opponent..."
+                else:
+                    self.mesText = "Opponent is ready!"
+            elif verdict == "start":
+                self.animateStart()
+        if ptype == "ships_pos" and self.spectator:
+            num = int(packet.split(";")[1])
+            if num == 0:
+                field = self.myField
+                ships = self.ships
+            else:
+                field = self.opponentField
+                ships = self.opponent_ships
+            info = packet.split(";")[2]
+            for i in range(len(info.split("$"))):
+                size, vertical, x, y = info.split("$")[i].split("|")
+                sprite = ships.sprites()[i]
+                sprite.vertical = vertical
+                sprite.setCell(x, y)
+                field.setShip(sprite)
+
+
+    def animateShot(self, field, i, j):
+        pass
+
+    def animateStart(self):
+        pass
+
+
     def check_move(self):
         if self.ship_on_cursor is not None:
             self.ship_on_cursor.rect = self.ship_on_cursor.rect.move(pygame.mouse.get_rel())
 
     def draw(self):
-        pygame.mouse.get_rel()
+        pygame.mouse.get_rel() # Это нужно вызывать постоянно, чтобы корабли двигались нормально, поэтому это здесь
+        self.message = pygame.font.SysFont("comicsansms", 54).render(self.mesText, False, (0, 0, 0))
+        screen.blit(self.message, (720 - self.message.get_width() // 2, 400))
 
 
 def cikle():
@@ -737,9 +809,6 @@ def cikle():
 
 
 pygame.init()
-pygame.mixer.music.load('sounds/bg_music.mp3')
-pygame.mixer.music.set_volume(volume * 0.1)
-pygame.mixer.music.play(-1)
 shot = pygame.mixer.Sound('sounds/shot.wav')
 shot.set_volume(volume2 * 0.1)
 
