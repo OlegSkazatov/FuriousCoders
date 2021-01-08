@@ -228,18 +228,23 @@ class Ship(pygame.sprite.Sprite):
 class ShotResult(pygame.sprite.Sprite):
     def __init__(self, group, mainGroup, field, i, j, image):
         super().__init__(group)
-        self.image = pygame.transform.scale(image, (60, 60))
+        self.image = pygame.transform.scale(load_image(image), (60, 60))
         self.image.set_alpha(135)
+        self.path = image
         self.rect = self.image.get_rect()
+        self.field = field
+        self.i = i
+        self.j = j
         self.rect = self.rect.move(field.rect.x + i * 30, field.rect.y + j * 30)
         mainGroup.add(self)
 
     def update(self):
         if self.image.get_alpha() != 255:
             self.image.set_alpha(self.image.get_alpha() + 4)
-            self.image = pygame.transform.scale(self.image, (self.rect.width - 1, self.rect.height - 1))
+            self.image = pygame.transform.scale(load_image(self.path), (self.rect.width - 1, self.rect.height - 1))
             self.rect = self.image.get_rect()
-            self.rect.move(1, 1)
+            self.rect.x, self.rect.y = self.field.rect.x + self.i * 30 + (60 - self.rect.width),\
+                                       self.field.rect.y + self.j * 30 + (60 - self.rect.height)
 
 
 
@@ -661,7 +666,7 @@ class RoomChoice(Window):
 class Game(Window):
     def __init__(self, spectator=True, name1="", name2=""):
         super().__init__()
-        self.ptypes = ["chat_update", "ships_accept", "move"]
+        self.ptypes = ["chat_update", "ships_accept", "move", "shot_result", "got_shot"]
         pygame.mixer.music.unload()
         pygame.mixer.music.load('sounds/bg_music2.mp3')
         pygame.mixer.music.set_volume(volume * 0.1)
@@ -706,7 +711,7 @@ class Game(Window):
             self.resetButton.rect = self.resetButton.rect.move(35 * self.cellsize, 10 * self.cellsize)
             self.resetButton.press = self.resetShips
             self.shot_button = Button(self.buttons, self.sprites, load_image("sprites/button_fire_inactive.png"))
-            self.shot_button.rect = self.shot_button.rect.move(50, 220)
+            self.shot_button.rect = self.shot_button.rect.move(50, 420)
             self.shot_button.press = self.shot
             self.ship_4 = Ship(self.ships, self.sprites, size=4, x=35 * self.cellsize, y=self.cellsize,
                                myField=self.myField)
@@ -760,6 +765,7 @@ class Game(Window):
         if self.activeCell == (None, None):
             return
         sendPacket("shot;" + str(self.activeCell[0]) + ";" + str(self.activeCell[1]))
+        self.activeCell = (None, None)
 
     def check_click(self, event):
         super().check_click(event)
@@ -842,11 +848,12 @@ class Game(Window):
                 self.setShotButtonActive(True)
                 self.move = 1
             elif move != "your" and not self.spectator:
+                self.setShotButtonActive(False)
                 self.move = 0
             elif move != "your" and self.spectator:
                 self.move = int(move)
         if ptype == "shot_result":
-            result = packet.split(";")[1]
+            result, i, j = packet.split(";")[1:]
             if result == "miss":
                 splash.play()
             elif result == "deny":
@@ -855,7 +862,7 @@ class Game(Window):
                 return
             elif result == "hit":
                 shot.play()
-            self.animateShot(self.opponentField, self.activeCell[0], self.activeCell[1], result)
+            self.animateShot(self.opponentField, int(i), int(j), result)
             self.activeCell = (None, None)
         if ptype == "got_shot":
             result, i, j = packet.split(";")[1:]
@@ -871,9 +878,9 @@ class Game(Window):
 
     def animateShot(self, field, i, j, result):
         if result == "miss":
-            shotresult = ShotResult(self.shots, self.sprites, field, i, j, load_image("sprites/miss.png"))
+            shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/miss.png")
         elif result == "hit":
-            shotresult = ShotResult(self.shots, self.sprites, field, i, j, load_image("sprites/cross.png"))
+            shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/cross.png")
 
     def animateStart(self):
         pass

@@ -123,9 +123,10 @@ class Room:
     def setMove(self, move):
         self.move = move
         self.members[move].sendPacket(socket, "move;your")
-        for i in range(self.members):
+        for i in range(len(self.members)):
             if i != move:
-                self.members[i].sendPacket(socket, "move;" + str(move))
+                if self.members[i] != "":
+                    self.members[i].sendPacket(socket, "move;" + str(move))
 
     def update(self):
         packet = "room_update;"
@@ -164,7 +165,7 @@ def getPlayer(address):
 
 class MyUDPHandler(DatagramRequestHandler):
     def handle(self):
-        global flag, socket
+        global flag, socket, players, rooms
         packet = self.request[0].decode()
         ptype = packet.split(";")[0]
         socket = self.request[1]
@@ -212,7 +213,6 @@ class MyUDPHandler(DatagramRequestHandler):
                         r.sendMessage("{}: ".format(p.name) + message)
 
         if ptype == "quit_room":
-            global players, rooms
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -301,30 +301,32 @@ class MyUDPHandler(DatagramRequestHandler):
                         i, j = list(map(int, packet.split(";")[1:]))
                         if r.move == 0:
                             pl = r.members[1]
-                            cell = r.field2[j][i]
+                            cell = r.field2.field[j][i]
                             if cell == CellType.Blocked or cell == CellType.Empty:
-                                p.sendPacket(socket, "shot_result;miss")
+                                p.sendPacket(socket, "shot_result;miss;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;miss;" + str(i) + ";" + str(j))
-                                r.field2[j][i] = CellType.Miss
+                                r.field2.field[j][i] = CellType.Miss
                                 r.setMove(1)
                             elif cell == CellType.Miss or cell == CellType.Shot:
                                 p.sendPacket(socket, "shot_result;deny")
                             else:
-                                p.sendPacket(socket, "shot_result;hit")
+                                p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
-                                r.field2[j][i] = CellType.Shot
+                                r.field2.field[j][i] = CellType.Shot
                         else:
                             pl = r.members[0]
-                            cell = r.field1[j][i]
+                            cell = r.field1.field[j][i]
                             if cell == CellType.Blocked or cell == CellType.Empty:
-                                p.sendPacket("shot_result;miss")
-                                r.field1[j][i] = CellType.Miss
+                                p.sendPacket(socket, "shot_result;miss;" + str(i) + ";" + str(j))
+                                pl.sendPacket(socket, "got_shot;miss;" + str(i) + ";" + str(j))
+                                r.field1.field[j][i] = CellType.Miss
                                 r.setMove(0)
                             elif cell == CellType.Miss or cell == CellType.Shot:
                                 p.sendPacket(socket, "shot_result;deny")
                             else:
-                                p.sendPacket(socket, "shot_result;hit")
-                                r.field1[j][i] = CellType.Shot
+                                p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
+                                pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
+                                r.field1.field[j][i] = CellType.Shot
 
 
 if __name__ == "__main__":
