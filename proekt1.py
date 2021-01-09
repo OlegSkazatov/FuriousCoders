@@ -410,10 +410,10 @@ class Nactroiki(Window):
                                                          (50, 50)))
         self.button_back.press = self.back
         self.musicText = pygame.font.SysFont('comicsansms', 45).render(
-            'Volume:     1  2  3  4  5  6  7  8  9  10    (Music)', False,
+            'Громкость:  1  2  3  4  5  6  7  8  9  10    (Музыка)', False,
             (0, 0, 0))
         self.soundText = pygame.font.SysFont('comicsansms', 45).render(
-            'Volume:     1  2  3  4  5  6  7  8  9  10    (Sounds)',
+            'Громкость:  1  2  3  4  5  6  7  8  9  10    (Музыка)',
             False, (0, 0, 0))
         self.setVolume()
         pygame.mixer.music.set_volume(volume * 0.1)
@@ -928,7 +928,7 @@ class Game(Window):
                 result, i, j = packet.split(";")[1:]
                 self.animateShot(self.myField, int(i), int(j), result)
             else:
-                player, result, i, j = packet.split(";")[1]
+                player, result, i, j = packet.split(";")[1:]
                 if player == "0":
                     field = self.myField
                 else:
@@ -1023,7 +1023,7 @@ def cikle(): # Параллельный поток для получения п�
 pygame.init()
 shot = pygame.mixer.Sound('sounds/shot.wav')
 shot.set_volume(volume2 * 0.1)
-wrong = pygame.mixer.Sound('sounds/wrong_cell.mp3')
+wrong = pygame.mixer.Sound('sounds/wrong_cell.wav')
 wrong.set_volume(volume2 * 0.1)
 splash = pygame.mixer.Sound('sounds/splash.wav')
 splash.set_volume(volume2 * 0.1)

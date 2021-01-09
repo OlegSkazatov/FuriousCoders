@@ -278,7 +278,8 @@ class MyUDPHandler(DatagramRequestHandler):
                             elif i == 1:
                                 pl.sendPacket(socket, "game_start;player;" + pl.name + ";" + r.members[0].name)
                             else:
-                                pl.sendPacket(socket, "game_start;spectator;" + r.members[0].name + r.members[1].name)
+                                pl.sendPacket(socket, "game_start;spectator;" +
+                                              r.members[0].name + ";" + r.members[1].name)
 
         if ptype == "kickPlayer":
             p = getPlayer(self.client_address)
@@ -356,7 +357,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                 r.field2.field[j][i] = CellType.Miss
                                 r.setMove(1)
                             elif cell == CellType.Miss or cell == CellType.Shot:
-                                p.sendPacket(socket, "shot_result;deny")
+                                p.sendPacket(socket, "shot_result;deny;" + str(i) + ";" + str(j))
                             else:
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
@@ -389,7 +390,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                 r.field1.field[j][i] = CellType.Miss
                                 r.setMove(0)
                             elif cell == CellType.Miss or cell == CellType.Shot:
-                                p.sendPacket(socket, "shot_result;deny")
+                                p.sendPacket(socket, "shot_result;deny;" + str(i) + ";" + str(j))
                             else:
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
