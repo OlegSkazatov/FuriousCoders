@@ -95,6 +95,15 @@ class Player:
                 for i in range(len(self.room.members)):
                     self.room.kickPlayer(i)
                 rooms.remove(self.room)
+            if self.room.status == RoomStatus.SHIPSETTING or self.room.status == RoomStatus.GAME:
+                for p in self.room.members:
+                    if p != "":
+                        packet = "room_connection;" + str(self.name)
+                        p.sendPacket(socket, packet)
+                        self.room.update()
+                self.room.status = RoomStatus.WAIT
+                self.room.sendMessage("One of the players left, so the game was stopped")
+
         if self in players:
             players.remove(self)
 
@@ -163,6 +172,12 @@ def getPlayer(address):
             return p
 
 
+def getRoom(name):
+    for r in rooms:
+        if r.hostPlayer.name == name:
+            return r
+
+
 class MyUDPHandler(DatagramRequestHandler):
     def handle(self):
         global flag, socket, players, rooms
@@ -173,10 +188,10 @@ class MyUDPHandler(DatagramRequestHandler):
             name = packet.split(";")[1]
             address = self.client_address
             for pl in players:
-                if pl.name == name:
+                if pl.name == name and pl.room is not None:
                     socket.sendto("connectionRefuse;name".encode(), self.client_address)
                     break
-                if pl.addr[0] == address[0]:
+                if pl.addr[0] == address[0] and pl.room is not None:
                     socket.sendto("connectionRefuse;address".encode(), self.client_address)
                     break
             else:
@@ -197,12 +212,29 @@ class MyUDPHandler(DatagramRequestHandler):
             if p is None:
                 socket.sendto("not_exist".encode(), self.client_address)
             else:
-                rs = list(filter(lambda x: "" in x.members, rooms))
+                rs = list(filter(lambda x: "" in x.members and x.status == RoomStatus.WAIT, rooms))
                 if len(rs) != 0:
                     r = choice(rs)
                     r.connectPlayer(p)
                 else:
-                    pass
+                    p.sendPacket(socket, "room_refuse;not_exist")
+
+        if ptype == "direct_connect":
+            p = getPlayer(self.client_address)
+            if p is not None:
+                r = getRoom(packet.split(";")[1])
+                if r is not None:
+                    if "" in r.members and r.status == RoomStatus.WAIT:
+                        r.connectPlayer(p)
+                    elif "" in r.members and r.status != RoomStatus.WAIT:
+                        p.sendPacket(socket, "room_refuse;ingame")
+                    elif "" not in r.members:
+                        p.sendPacket(socket, "room_refuse;full")
+                else:
+                    p.sendPacket(socket, "room_refuse;not_exist")
+            else:
+                socket.sendto("not_exist".encode(), self.client_address)
+
         if ptype == "chat_message":
             message = ";".join(packet.split(";")[1:])
             p = getPlayer(self.client_address)
@@ -226,12 +258,19 @@ class MyUDPHandler(DatagramRequestHandler):
                         rooms.remove(r)
                 players.remove(p)
 
+        if ptype == "leave":
+            p = getPlayer(self.client_address)
+            if p is not None:
+                r = p.room
+                if r is not None:
+                    p.sendPacket(socket, "room_connection;" + r.hostPlayer.name)
+
         if ptype == "start_game":
             p = getPlayer(self.client_address)
             if p.room.status == RoomStatus.WAIT and p.room.hostPlayer.addr == p.addr:
                 r = p.room
                 if r.members[0] == "" or r.members[1] == "":
-                    p.sendPacket("game_refuse;not_enough")
+                    p.sendPacket(socket, "game_refuse;not_enough")
                 else:
                     r.status = RoomStatus.SHIPSETTING
                     for i in range(len(r.members)):
@@ -264,7 +303,17 @@ class MyUDPHandler(DatagramRequestHandler):
                             r.hostPlayer = player
                             player.sendPacket(socket, "got_host")
                             r.sendMessage(player.name + " has become the host")
-
+        if ptype == "change_role":
+            p = getPlayer(self.client_address)
+            if p is not None:
+                r = p.room
+                if r is not None:
+                    if r.hostPlayer.addr[0] == p.addr[0]:
+                        first, second = packet.split(";")[1:]
+                        r.sendMessage("Host: changed " + r.members[int(first)].name
+                                      + " and " + r.members[int(second)].name + " places")
+                        r.members[int(first)], r.members[int(second)] = r.members[int(second)], r.members[int(first)]
+                        r.update()
         if ptype == "shipPositions":
             p = getPlayer(self.client_address)
             if p is not None:
@@ -280,6 +329,7 @@ class MyUDPHandler(DatagramRequestHandler):
                             for spectator in r.members[2:]:  # Отправка расположения кораблей наблюдателям
                                 if spectator != "":
                                     spectator.sendPacket("ships_pos;" + str(index) + ";" + packet.split(";")[1])
+                            r.sendMessage(r.members[index].name + " is ready!")
                             if r.field1.isEmpty or r.field2.isEmpty:
                                 for player in r.members:
                                     if player != "":
@@ -288,6 +338,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                 for player in r.members:
                                     if player != "":
                                         player.sendPacket(socket, "ships_accept;start")
+                                r.sendMessage("Starting!")
                                 r.status = RoomStatus.GAME
                                 r.setMove(randint(0, 1))
                         except ValueError:
@@ -313,6 +364,19 @@ class MyUDPHandler(DatagramRequestHandler):
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
                                 r.field2.field[j][i] = CellType.Shot
+                                flag = True
+                                for x in range(10):
+                                    for y in range(10):
+                                        if r.field2.field[y][x] not in [CellType.Blocked, CellType.Empty, CellType.Miss,
+                                                                        CellType.Shot]:
+                                            flag = False
+                                if flag:
+                                    r.status = RoomStatus.WAIT
+                                    p.sendPacket(socket, "game_result;victory")
+                                    pl.sendPacket(socket, "game_result;loss")
+                                    for spectator in r.members[2:]:
+                                        if spectator != "":
+                                            spectator.sendPacket(socket, "gameresult;0")
                         else:
                             pl = r.members[0]
                             cell = r.field1.field[j][i]
@@ -327,6 +391,19 @@ class MyUDPHandler(DatagramRequestHandler):
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
                                 r.field1.field[j][i] = CellType.Shot
+                                flag = True
+                                for x in range(10):
+                                    for y in range(10):
+                                        if r.field1.field[y][x] not in [CellType.Blocked, CellType.Empty, CellType.Miss,
+                                                                        CellType.Shot]:
+                                            flag = False
+                                if flag:
+                                    r.status = RoomStatus.WAIT
+                                    p.sendPacket(socket, "game_result;victory")
+                                    pl.sendPacket(socket, "game_result;loss")
+                                    for spectator in r.members[2:]:
+                                        if spectator != "":
+                                            spectator.sendPacket(socket, "gameresult;1")
 
 
 if __name__ == "__main__":

@@ -169,6 +169,10 @@ class Ship(pygame.sprite.Sprite):
         self.rect.y = self.myField.rect.y + 30 + 30 * j
 
     def rotate(self, force=False):
+        if not force:
+            if (self.vertical and self.i + self.size - 1 > 9) or (not self.vertical and self.j + self.size - 1 > 9):
+                self.reset()
+                return
         self.vertical = not self.vertical
         x, y = self.rect.x, self.rect.y
         self.image = pygame.transform.rotate(self.image, 90)
@@ -230,6 +234,7 @@ class ShotResult(pygame.sprite.Sprite):
         super().__init__(group)
         self.image = pygame.transform.scale(load_image(image), (60, 60))
         self.image.set_alpha(135)
+        self.alpha = 135
         self.path = image
         self.rect = self.image.get_rect()
         self.field = field
@@ -239,13 +244,36 @@ class ShotResult(pygame.sprite.Sprite):
         mainGroup.add(self)
 
     def update(self):
-        if self.image.get_alpha() != 255:
-            self.image.set_alpha(self.image.get_alpha() + 4)
+        if self.alpha != 255:
+            self.alpha += 4
             self.image = pygame.transform.scale(load_image(self.path), (self.rect.width - 1, self.rect.height - 1))
+            self.image.set_alpha(self.alpha)
             self.rect = self.image.get_rect()
-            self.rect.x, self.rect.y = self.field.rect.x + self.i * 30 + (60 - self.rect.width),\
+            self.rect.x, self.rect.y = self.field.rect.x + self.i * 30 + (60 - self.rect.width), \
                                        self.field.rect.y + self.j * 30 + (60 - self.rect.height)
 
+
+class GameResult(pygame.sprite.Sprite):
+    def __init__(self, group, mainGroup, result):
+        super().__init__(group)
+        mainGroup.add(self)
+        self.clock = 0
+        self.opacity = 0
+        if result == "victory":
+            self.image = load_image("sprites/victory.png")
+        else:
+            self.image = load_image("sprites/loss.png")
+        self.rect = self.image.get_rect()
+        self.image.set_alpha(self.opacity)
+
+    def update(self):
+        if 0 <= self.clock <= 15:
+            self.opacity += 17
+            self.image.set_alpha(self.opacity)
+        elif 75 <= self.clock <= 90:
+            self.opacity -= 17
+        self.image.set_alpha(self.opacity)
+        self.clock += 1
 
 
 class InputBox:
@@ -452,6 +480,7 @@ class Room(Window):
                                                          (50, 50)))
         self.hosting = False
         self.player_on_cursor = None
+        self.target_player = -1
         self.button_back.press = self.exit
         self.playersLine = pygame.font.SysFont('comicsansms', 45).render('Players:', False,
                                                                          (0, 0, 0))
@@ -499,7 +528,10 @@ class Room(Window):
         self.button_makeHost.remove()
 
     def changeRole(self):
-        pass
+        if not self.hosting:
+            return
+        self.target_player = self.player_on_cursor
+        self.player_on_cursor = None
 
     def makeHost(self):
         if not self.hosting:
@@ -569,11 +601,15 @@ class Room(Window):
         if self.hosting:
             for p in self.players:
                 if p.rect.collidepoint(x, y) and not p.text.endswith("Empty") and p.text != "":
-                    self.player_on_cursor = self.players.index(p)
-                    self.button_makeHost.rect.x, self.button_makeHost.rect.y = 650, 400
-                    self.button_kick.rect.x, self.button_kick.rect.y = 650, 500
-                    self.button_changeRole.rect.x, self.button_changeRole.rect.y = 650, 600
-                    break
+                    if self.target_player == -1:
+                        self.player_on_cursor = self.players.index(p)
+                        self.button_makeHost.rect.x, self.button_makeHost.rect.y = 650, 400
+                        self.button_kick.rect.x, self.button_kick.rect.y = 650, 500
+                        self.button_changeRole.rect.x, self.button_changeRole.rect.y = 650, 600
+                        break
+                    else:
+                        sendPacket("change_role;" + str(self.target_player) + ";" + str(self.players.index(p)))
+                        self.target_player = -1
             else:
                 self.player_on_cursor = None
                 self.button_makeHost.remove()
@@ -584,7 +620,7 @@ class Room(Window):
 class RoomChoice(Window):
     def __init__(self):
         super().__init__()
-        self.ptypes = ["connectionAccept", "connectionRefuse", "room_connection", "not_exist"]
+        self.ptypes = ["connectionAccept", "connectionRefuse", "room_connection", "not_exist", "room_refuse"]
 
         self.background = pygame.sprite.Sprite(self.sprites)
         self.background.image = load_image("sprites/background.png")
@@ -611,20 +647,33 @@ class RoomChoice(Window):
         self.nameError_text = pygame.font.SysFont("inkfree", 54).render("This name is occupied!", False, (120, 0, 0))
         self.addrError_text = pygame.font.SysFont("inkfree", 54).render("You are already connected!", False,
                                                                         (120, 0, 0))
+
+        self.addrInput = InputBox(110, 700, 600, 75, "Enter host's name", drawrect=False)
+        self.addrInput.FONT = pygame.font.SysFont("comicsansms", 32)
+
         self.enterName = pygame.font.SysFont("inkfree", 54).render("Type in your name first: ", False, (120, 0, 0))
         self.nameText = self.nameText_normal
 
+        self.msgText = ""
+        self.msg = pygame.font.SysFont("comicsansms", 42).render(self.msgText, False, (0, 0, 0))
+
     def draw(self):
         self.nameInput.draw(screen)
+        self.addrInput.draw(screen)
         screen.blit(self.nameText, (500, 30))
+        self.msg = pygame.font.SysFont("comicsansms", 42).render(self.msgText, False, (0, 0, 0))
+        screen.blit(self.msg, (60, 60 - self.msg.get_height()))
 
     def check_keypress(self, event):
         self.nameInput.handle_event(event)
+        self.addrInput.handle_event(event)
         self.nameText = self.nameText_normal
 
     def check_click(self, event):
         super().check_click(event)
         self.nameInput.handle_event(event)
+        self.addrInput.handle_event(event)
+        self.msgText = ""
 
     def back(self):
         global activeWindow
@@ -644,7 +693,14 @@ class RoomChoice(Window):
         sendPacket("randomroom")
 
     def directConnect(self):
-        pass
+        if self.nameInput.text != "Your name" and self.nameInput.text != "":
+            packet = "connect;" + self.nameInput.text
+            sendPacket(packet)
+            name = self.addrInput.text
+            if name == "" or name == "Enter host's name":
+                self.msgText = "Host's name is empty!"
+            else:
+                sendPacket("direct_connect;" + name)
 
     def handlePacket(self, packet):
         global activeWindow
@@ -661,17 +717,27 @@ class RoomChoice(Window):
         if ptype == "room_connection":
             activeWindow = Room()
             activeWindow.set()
+        if ptype == "room_refuse":
+            reason = packet.split(";")[1]
+            if reason == "not_exist":
+                self.msgText = "Room not found!"
+            elif reason == "full":
+                self.msgText = "The room is full!"
+            elif reason == "ingame":
+                self.msgText = "The game is in process!"
 
 
 class Game(Window):
     def __init__(self, spectator=True, name1="", name2=""):
         super().__init__()
-        self.ptypes = ["chat_update", "ships_accept", "move", "shot_result", "got_shot"]
+        self.ptypes = ["chat_update", "ships_accept", "move", "shot_result", "got_shot", "game_result",
+                       "room_connection"]
         pygame.mixer.music.unload()
         pygame.mixer.music.load('sounds/bg_music2.mp3')
         pygame.mixer.music.set_volume(volume * 0.1)
         pygame.mixer.music.play(-1)
         self.shipsSet = False
+        self.nameDraw = True
         self.mesText = ""
         self.name1 = name1
         self.name2 = name2
@@ -679,9 +745,9 @@ class Game(Window):
         self.message = pygame.font.SysFont("comicsansms", 30).render(self.mesText, False, (0, 0, 0))
 
         self.ships = pygame.sprite.Group()
-        self.opponent_ships = pygame.sprite.Group()
         self.buttons = pygame.sprite.Group()
         self.shots = pygame.sprite.Group()
+        self.gameResults = pygame.sprite.Group()
         self.ship_on_cursor = None
         self.cellsize = 30
         self.spectator = spectator
@@ -696,12 +762,12 @@ class Game(Window):
         self.opponentField = Gamefield(self.sprites)
         self.myField.rect = self.myField.rect.move(self.cellsize, self.cellsize - 1)
         self.opponentField.rect = self.opponentField.rect.move(20 * self.cellsize, self.cellsize - 1)
-        if self.spectator:
-            for i in range(1, 5):
-                for j in range(5 - i):
-                    ship = Ship(self.ships, self.sprites, i, 0, 0, myField=self.myField)
-                    ship_o = Ship(self.opponent_ships, self.sprites, i, 0, 0, myField=self.opponentField)
-        else:
+        self.leave_button = Button(self.buttons, self.sprites,
+                                   pygame.transform.scale(load_image("sprites/button_back.png"),
+                                                          (50, 50)))
+        self.leave_button.remove()
+        self.leave_button.press = self.leave
+        if not self.spectator:
             self.inputMessage = InputBox(910, 770, 400, 30, drawrect=False, text="Type here", lenlimit=30)
             self.inputMessage.FONT = pygame.font.SysFont("comicsansms", 24)
             self.acceptButton = Button(self.buttons, self.sprites, load_image("sprites/buttonAccept.png"))
@@ -711,7 +777,7 @@ class Game(Window):
             self.resetButton.rect = self.resetButton.rect.move(35 * self.cellsize, 10 * self.cellsize)
             self.resetButton.press = self.resetShips
             self.shot_button = Button(self.buttons, self.sprites, load_image("sprites/button_fire_inactive.png"))
-            self.shot_button.rect = self.shot_button.rect.move(50, 420)
+            self.shot_button.rect = self.shot_button.rect.move(50, 460)
             self.shot_button.press = self.shot
             self.ship_4 = Ship(self.ships, self.sprites, size=4, x=35 * self.cellsize, y=self.cellsize,
                                myField=self.myField)
@@ -755,6 +821,12 @@ class Game(Window):
         self.resetButton.remove()
         self.acceptButton.remove()
 
+    def leave(self):
+        global activeWindow
+        activeWindow = RoomChoice()
+        activeWindow.set()
+        sendPacket("quit_room")
+
     def updateMyField(self):
         self.myField.clearField()
         for ship in self.ships.sprites():
@@ -772,8 +844,8 @@ class Game(Window):
         self.inputMessage.handle_event(event)
         if self.move:
             x, y = event.pos
-            if self.opponentField.rect.collidepoint(x, y):
-                self.activeCell = self.opponentField.getClosest(x, y)
+            if self.opponentField.rect.collidepoint(x, y) and self.nameDraw:
+                self.activeCell = self.opponentField.get_cell((x, y))[0] - 1, self.opponentField.get_cell((x, y))[1] - 1
             else:
                 self.activeCell = (None, None)
         if self.shipsSet or self.spectator:
@@ -814,6 +886,7 @@ class Game(Window):
 
     def handlePacket(self, packet):
         super().handlePacket(packet)
+        global activeWindow
         ptype = packet.split(";")[0]
         if ptype == "ships_accept":
             verdict = packet.split(";")[1]
@@ -846,9 +919,11 @@ class Game(Window):
             move = packet.split(";")[1]
             if move == "your" and not self.spectator:
                 self.setShotButtonActive(True)
+                self.message = "Your move!"
                 self.move = 1
             elif move != "your" and not self.spectator:
                 self.setShotButtonActive(False)
+                self.message = "Opponent makes move..."
                 self.move = 0
             elif move != "your" and self.spectator:
                 self.move = int(move)
@@ -867,6 +942,12 @@ class Game(Window):
         if ptype == "got_shot":
             result, i, j = packet.split(";")[1:]
             self.animateShot(self.myField, int(i), int(j), result)
+        if ptype == "game_result" and not self.spectator:
+            result = packet.split(";")[1]
+            self.animateEnd(result)
+        if ptype == "room_connection":
+            activeWindow = Room()
+            activeWindow.set()
 
     def setShotButtonActive(self, active):
         if self.spectator:
@@ -883,7 +964,13 @@ class Game(Window):
             shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/cross.png")
 
     def animateStart(self):
-        pass
+        self.message = ""
+
+    def animateEnd(self, result):
+        self.nameDraw = False
+        self.setShotButtonActive(False)
+        self.leave_button.rect.x, self.leave_button.rect.y = 695, 750
+        animation = GameResult(self.gameResults, self.sprites, result)
 
     def check_move(self):
         if self.ship_on_cursor is not None:
@@ -891,7 +978,7 @@ class Game(Window):
 
     def draw(self):
         pygame.mouse.get_rel()  # Это нужно вызывать постоянно, чтобы корабли двигались нормально, поэтому это здесь
-        self.message = pygame.font.SysFont("comicsansms", 54).render(self.mesText, False, (0, 0, 0))
+        self.message = pygame.font.SysFont("comicsansms", 30).render(self.mesText, False, (0, 0, 0))
         screen.blit(self.message, (50, 760 - self.message.get_height()))
         color1 = (120, 0, 0) if self.move else (0, 0, 0)
         color2 = (120, 0, 0) if not self.move else (0, 0, 0)
@@ -902,7 +989,8 @@ class Game(Window):
         if self.move is None:
             color1, color2 = (0, 0, 0), (0, 0, 0)
         screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name1, False, color1), (30, 390))
-        screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name2, False, color2), (600, 390))
+        if self.nameDraw:
+            screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name2, False, color2), (600, 390))
         self.chat.draw()
         if not self.spectator:
             screen.blit(pygame.font.SysFont("comicsansms", 36).render(">", False, (0, 0, 0)), (900, 765))
@@ -915,6 +1003,8 @@ class Game(Window):
                     != "Type here" and self.inputMessage.text != "":
                 sendPacket("chat_message;" + self.inputMessage.text)
                 self.inputMessage.text = ""
+            # if event.key == pygame.K_w:
+            #     self.animateEnd("loss")
 
 
 def cikle():
