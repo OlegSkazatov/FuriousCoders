@@ -1,9 +1,6 @@
-# -*- coding: utf-8 -*-
-
 from socketserver import *
 import enum
 from random import choice, randint
-import time
 
 host = '26.153.209.176'
 port = 777
@@ -326,9 +323,6 @@ class MyUDPHandler(DatagramRequestHandler):
                                 r.field1.setShips(packet.split(";")[1])
                             elif index == 1:
                                 r.field2.setShips(packet.split(";")[1])
-                            for spectator in r.members[2:]:  # Отправка расположения кораблей наблюдателям
-                                if spectator != "":
-                                    spectator.sendPacket("ships_pos;" + str(index) + ";" + packet.split(";")[1])
                             r.sendMessage(r.members[index].name + " is ready!")
                             if r.field1.isEmpty or r.field2.isEmpty:
                                 for player in r.members:
@@ -356,6 +350,9 @@ class MyUDPHandler(DatagramRequestHandler):
                             if cell == CellType.Blocked or cell == CellType.Empty:
                                 p.sendPacket(socket, "shot_result;miss;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;miss;" + str(i) + ";" + str(j))
+                                for spectator in r.members[2:]:
+                                    if spectator != "":
+                                        spectator.sendPacket(socket, "got_shot;1;miss;" + str(i) + ";" + str(j))
                                 r.field2.field[j][i] = CellType.Miss
                                 r.setMove(1)
                             elif cell == CellType.Miss or cell == CellType.Shot:
@@ -363,6 +360,9 @@ class MyUDPHandler(DatagramRequestHandler):
                             else:
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
+                                for spectator in r.members[2:]:
+                                    if spectator != "":
+                                        spectator.sendPacket(socket, "got_shot;1;hit;" + str(i) + ";" + str(j))
                                 r.field2.field[j][i] = CellType.Shot
                                 flag = True
                                 for x in range(10):
@@ -376,13 +376,16 @@ class MyUDPHandler(DatagramRequestHandler):
                                     pl.sendPacket(socket, "game_result;loss")
                                     for spectator in r.members[2:]:
                                         if spectator != "":
-                                            spectator.sendPacket(socket, "gameresult;0")
+                                            spectator.sendPacket(socket, "game_result;0")
                         else:
                             pl = r.members[0]
                             cell = r.field1.field[j][i]
                             if cell == CellType.Blocked or cell == CellType.Empty:
                                 p.sendPacket(socket, "shot_result;miss;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;miss;" + str(i) + ";" + str(j))
+                                for spectator in r.members[2:]:
+                                    if spectator != "":
+                                        spectator.sendPacket(socket, "got_shot;0;miss;" + str(i) + ";" + str(j))
                                 r.field1.field[j][i] = CellType.Miss
                                 r.setMove(0)
                             elif cell == CellType.Miss or cell == CellType.Shot:
@@ -390,6 +393,9 @@ class MyUDPHandler(DatagramRequestHandler):
                             else:
                                 p.sendPacket(socket, "shot_result;hit;" + str(i) + ";" + str(j))
                                 pl.sendPacket(socket, "got_shot;hit;" + str(i) + ";" + str(j))
+                                for spectator in r.members[2:]:
+                                    if spectator != "":
+                                        spectator.sendPacket(socket, "got_shot;0;hit;" + str(i) + ";" + str(j))
                                 r.field1.field[j][i] = CellType.Shot
                                 flag = True
                                 for x in range(10):
@@ -403,7 +409,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                     pl.sendPacket(socket, "game_result;loss")
                                     for spectator in r.members[2:]:
                                         if spectator != "":
-                                            spectator.sendPacket(socket, "gameresult;1")
+                                            spectator.sendPacket(socket, "game_result;1")
 
 
 if __name__ == "__main__":

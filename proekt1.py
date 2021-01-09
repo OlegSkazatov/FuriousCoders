@@ -1,13 +1,11 @@
 import pygame
 from socket import *
-import random
 import threading
 import sys
 import os
-import time
 import enum
 
-host = '26.153.209.176'
+host = '26.153.209.176'  # Адрес сервера, нужно вводить сюда
 port = 777
 addr = (host, port)
 volume = 1
@@ -16,7 +14,7 @@ udp_socket = socket(AF_INET, SOCK_DGRAM)
 data = [0, '0']
 
 
-def load_image(name, colorkey=None):
+def load_image(name, colorkey=None):  # Загрузка картинок
     fullname = os.path.join(name)
     if not os.path.isfile(fullname):
         print(f"Файл с изображением '{fullname}' не найден")
@@ -25,31 +23,31 @@ def load_image(name, colorkey=None):
     return image
 
 
-def sendPacket(packet):
+def sendPacket(packet):  # Отправка пакетов на сервер
     udp_socket.sendto(packet.encode(), addr)
 
 
-class CellType(enum.Enum):
+class CellType(enum.Enum):  # Содержимое клетки
     Empty = 0
     Blocked = 1
     Ship = 2
 
 
-class Button(pygame.sprite.Sprite):
-    def __init__(self, group, mainGroup, image):
+class Button(pygame.sprite.Sprite):  # Класс кнопки
+    def __init__(self, group, mainGroup, image):  # group - группа кнопок в окне, mainGroup - группа всех спрайтов окна
         super().__init__(group)
         mainGroup.add(self)
         self.image = image
         self.rect = self.image.get_rect()
 
-    def press(self):
+    def press(self):  # Переопределяемый метод. Описывает то, что делает кнопка
         pass
 
-    def remove(self):
+    def remove(self):  # Убрать кнопку с экрана
         self.rect.x, self.rect.y = 1450, 820
 
 
-class Chat:
+class Chat:  # Класс чата
     def __init__(self, x, y, w, h, lines, font):
         self.rect = pygame.Rect(x, y, w, h)
         self.maxlines = lines
@@ -62,14 +60,14 @@ class Chat:
         if len(self.lines) > self.maxlines:
             self.lines = self.lines[1:]
 
-    def draw(self):
+    def draw(self):  # Отрисовка
         for i in range(len(self.lines)):
             line = self.lines[i]
             text = self.font.render(line, False, (20, 20, 20))
             screen.blit(text, (self.rect.x + 5, self.rect.y + 5 + self.lineHeight * i))
 
 
-class Gamefield(pygame.sprite.Sprite):
+class Gamefield(pygame.sprite.Sprite):  # Клетчатое поле для кораблей
     def __init__(self, *group):
         super().__init__(*group)
         self.image = load_image("sprites/game_field.png")
@@ -77,7 +75,7 @@ class Gamefield(pygame.sprite.Sprite):
         self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
         self.ships = []
 
-    def get_cell(self, mousepos):
+    def get_cell(self, mousepos):  # Получить клетку по координатам
         x = mousepos[0] - self.rect.x - 30
         y = mousepos[1] - self.rect.y - 30
         x = x // 30 + 1
@@ -86,7 +84,7 @@ class Gamefield(pygame.sprite.Sprite):
             return None
         return x, y
 
-    def getClosest(self, x, y):
+    def getClosest(self, x, y): # Получить ближайшую клетку по координатам
         if not (self.rect.x + 30 <= x <= self.rect.x + self.rect.width
                 and self.rect.y + 30 <= y <= self.rect.y + self.rect.height):
             return None
@@ -102,7 +100,7 @@ class Gamefield(pygame.sprite.Sprite):
             j = j // 30 + 1
         return i, j
 
-    def setShip(self, ship):
+    def setShip(self, ship):  # Установка корабля
         for cell in ship.get_cells():
             i, j = cell
             self.field[j][i] = CellType.Ship
@@ -116,7 +114,7 @@ class Gamefield(pygame.sprite.Sprite):
         self.ships.clear()
 
 
-class Ship(pygame.sprite.Sprite):
+class Ship(pygame.sprite.Sprite):  # Класс корабля
     def __init__(self, group, main, size, x, y, myField):
         super().__init__(group)
         self.image = load_image("sprites/ship-" + str(size) + ".png")
@@ -140,7 +138,7 @@ class Ship(pygame.sprite.Sprite):
     def remove(self):
         self.rect.x, self.rect.y = 1450, 820
 
-    def get_cells(self):
+    def get_cells(self):  # Клетки корабля
         cells = []
         if self.i is None or self.j is None:
             return None
@@ -152,7 +150,7 @@ class Ship(pygame.sprite.Sprite):
                 cells.append((self.i + n, self.j))
         return cells
 
-    def reset(self):
+    def reset(self):  # Вернуть в исходное положение
         self.isSet = False
         self.i = None
         self.j = None
@@ -168,7 +166,7 @@ class Ship(pygame.sprite.Sprite):
         self.rect.x = self.myField.rect.x + 30 + 30 * i
         self.rect.y = self.myField.rect.y + 30 + 30 * j
 
-    def rotate(self, force=False):
+    def rotate(self, force=False):  # Поворот
         if not force:
             if (self.vertical and self.i + self.size - 1 > 9) or (not self.vertical and self.j + self.size - 1 > 9):
                 self.reset()
@@ -186,7 +184,7 @@ class Ship(pygame.sprite.Sprite):
                 self.isSet = True
                 self.myField.setShip(self)
 
-    def get_outer_cells(self):
+    def get_outer_cells(self):  # Клетки, стоящие вплотную к кораблю
         cells = []
         for i in range(self.size + 2):
             for j in range(-1, 2):
@@ -197,7 +195,7 @@ class Ship(pygame.sprite.Sprite):
         cells = list(filter(lambda x: 0 <= x[0] <= 9 and 0 <= x[1] <= 9 and x not in self.get_cells(), cells))
         return cells
 
-    def isLegit(self):
+    def isLegit(self):  # Проверка, соответствует ли положение правилам игры
         cells = self.get_cells()
         if cells is None:
             return None
@@ -216,7 +214,7 @@ class Ship(pygame.sprite.Sprite):
                     return False
         return True
 
-    def setRed(self, red, force=False):
+    def setRed(self, red, force=False): # Установка красного вида корабля
         if red:
             image = load_image("sprites/ship-" + str(self.size) + "_red.png")
         else:
@@ -229,7 +227,7 @@ class Ship(pygame.sprite.Sprite):
             self.set_cell(self.i, self.j)
 
 
-class ShotResult(pygame.sprite.Sprite):
+class ShotResult(pygame.sprite.Sprite):  # Анимация выстрела
     def __init__(self, group, mainGroup, field, i, j, image):
         super().__init__(group)
         self.image = pygame.transform.scale(load_image(image), (60, 60))
@@ -253,7 +251,7 @@ class ShotResult(pygame.sprite.Sprite):
                                        self.field.rect.y + self.j * 30 + (60 - self.rect.height)
 
 
-class GameResult(pygame.sprite.Sprite):
+class GameResult(pygame.sprite.Sprite):  # Анимация победы или поражения
     def __init__(self, group, mainGroup, result):
         super().__init__(group)
         mainGroup.add(self)
@@ -276,7 +274,7 @@ class GameResult(pygame.sprite.Sprite):
         self.clock += 1
 
 
-class InputBox:
+class InputBox:  # Ручной ввод
     def __init__(self, x, y, w, h, text='', lenlimit=20, drawrect=True):
         self.rect = pygame.Rect(x, y, w, h)
         self.COLOR_INACTIVE = pygame.Color((80, 80, 80))
@@ -322,37 +320,37 @@ class InputBox:
         pass
 
 
-class Window:
+class Window:  # Класс окна
     def __init__(self):
         self.sprites = pygame.sprite.Group()
         self.buttons = pygame.sprite.Group()
-        self.ptypes = []
+        self.ptypes = []  # Виды принимаемых пакетов
 
-    def set(self):
+    def set(self): # Установка
         global all_sprites
         self.sprites.draw(screen)
         self.sprites.update()
         all_sprites = self.sprites
 
-    def draw(self):
+    def draw(self): # Отрисовка доп. элементов (не спрайтов)
         pass
 
-    def check_click(self, event):
+    def check_click(self, event): # Событие нажатия
         x, y = event.pos
         for b in self.buttons.sprites():
             if b.rect.collidepoint(x, y):
                 b.press()
 
-    def check_release(self, mouse_pos):
+    def check_release(self, mouse_pos): # Событие отжатия
         pass
 
-    def check_move(self):
+    def check_move(self): # Событие движения
         pass
 
-    def check_keypress(self, event):
+    def check_keypress(self, event): # Событие клавиатуры
         pass
 
-    def handlePacket(self, packet):
+    def handlePacket(self, packet):  # Обработка пакета
         ptype = packet.split(";")
         if ptype not in self.ptypes:
             return
@@ -455,7 +453,7 @@ class Nactroiki(Window):
                          (390 + (volume2 - 1) * 53, 255), 3)
 
 
-class PlayerText:
+class PlayerText:  # Окно с именем игрока в комнате
     def __init__(self, x, y, w, h, font, text, drawrect=True):
         self.rect = pygame.Rect(x, y, w, h)
         self.font = font
@@ -841,7 +839,8 @@ class Game(Window):
 
     def check_click(self, event):
         super().check_click(event)
-        self.inputMessage.handle_event(event)
+        if not self.spectator:
+            self.inputMessage.handle_event(event)
         if self.move:
             x, y = event.pos
             if self.opponentField.rect.collidepoint(x, y) and self.nameDraw:
@@ -900,21 +899,6 @@ class Game(Window):
         if ptype == "chat_update":
             message = packet.split(";")[1]
             self.chat.addLine(message)
-        if ptype == "ships_pos" and self.spectator:
-            num = int(packet.split(";")[1])
-            if num == 0:
-                field = self.myField
-                ships = self.ships
-            else:
-                field = self.opponentField
-                ships = self.opponent_ships
-            info = packet.split(";")[2]
-            for i in range(len(info.split("$"))):
-                size, vertical, x, y = info.split("$")[i].split("|")
-                sprite = ships.sprites()[i]
-                sprite.vertical = vertical
-                sprite.setCell(x, y)
-                field.setShip(sprite)
         if ptype == "move":
             move = packet.split(";")[1]
             if move == "your" and not self.spectator:
@@ -926,7 +910,7 @@ class Game(Window):
                 self.message = "Opponent makes move..."
                 self.move = 0
             elif move != "your" and self.spectator:
-                self.move = int(move)
+                self.move = not bool(int(move))
         if ptype == "shot_result":
             result, i, j = packet.split(";")[1:]
             if result == "miss":
@@ -940,11 +924,28 @@ class Game(Window):
             self.animateShot(self.opponentField, int(i), int(j), result)
             self.activeCell = (None, None)
         if ptype == "got_shot":
-            result, i, j = packet.split(";")[1:]
-            self.animateShot(self.myField, int(i), int(j), result)
-        if ptype == "game_result" and not self.spectator:
+            if not self.spectator:
+                result, i, j = packet.split(";")[1:]
+                self.animateShot(self.myField, int(i), int(j), result)
+            else:
+                player, result, i, j = packet.split(";")[1]
+                if player == "0":
+                    field = self.myField
+                else:
+                    field = self.opponentField
+                self.animateShot(field, int(i), int(j), result)
+        if ptype == "game_result":
             result = packet.split(";")[1]
-            self.animateEnd(result)
+            if not self.spectator:
+                self.animateEnd(result)
+            else:
+                if result == "0":
+                    winner = self.name1
+                else:
+                    winner = self.name2
+                self.message = winner + " won!"
+                self.nameDraw = False
+                self.leave_button.rect.x, self.leave_button.rect.y = 695, 750
         if ptype == "room_connection":
             activeWindow = Room()
             activeWindow.set()
@@ -964,7 +965,7 @@ class Game(Window):
             shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/cross.png")
 
     def animateStart(self):
-        self.message = ""
+        self.mesText = ""
 
     def animateEnd(self, result):
         self.nameDraw = False
@@ -991,7 +992,7 @@ class Game(Window):
         screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name1, False, color1), (30, 390))
         if self.nameDraw:
             screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name2, False, color2), (600, 390))
-        self.chat.draw()
+            self.chat.draw()
         if not self.spectator:
             screen.blit(pygame.font.SysFont("comicsansms", 36).render(">", False, (0, 0, 0)), (900, 765))
             self.inputMessage.draw(screen)
@@ -1007,14 +1008,14 @@ class Game(Window):
             #     self.animateEnd("loss")
 
 
-def cikle():
+def cikle(): # Параллельный поток для получения пакетов
     while True:
         try:
             sms = udp_socket.recvfrom(1024)
             if sms[0].decode() == '':
                 continue
             activeWindow.handlePacket(sms[0].decode())
-            print(sms[0].decode())
+            # print(sms[0].decode())
         except OSError:
             continue
 
@@ -1032,19 +1033,17 @@ height, width = 810, 1440
 size = width, height
 screen = pygame.display.set_mode(size)
 
-# pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-window = 'menu'
 running = True
 
-all_sprites = pygame.sprite.Group()
+all_sprites = pygame.sprite.Group() # Текущие спрайты
 
-activeWindow = Menu()
+activeWindow = Menu() # Текущее окно
 activeWindow.set()
 
 FPS = 30
 
 clock = pygame.time.Clock()
-client_handler = threading.Thread(
+client_handler = threading.Thread( # Запуск параллельного потока
     target=cikle,
     args=(),
     daemon=True
