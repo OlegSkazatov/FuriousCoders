@@ -239,8 +239,7 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
             if p is not None:
                 r = p.room
                 if r is not None:
-                    if not (r.status == RoomStatus.GAME and r.members.index(p) > 1):
-                        r.sendMessage("{}: ".format(p.name) + message)
+                    r.sendMessage("{}: ".format(p.name) + message)
 
         if ptype == "quit_room":  # Выход из комнаты
             p = getPlayer(self.client_address)
@@ -255,13 +254,6 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
                             r.kickPlayer(i)
                         rooms.remove(r)
                 players.remove(p)
-        # Это вроде бы не нужно
-        # if ptype == "leave":
-        #     p = getPlayer(self.client_address)
-        #     if p is not None:
-        #         r = p.room
-        #         if r is not None:
-        #             p.sendPacket(socket, "room_connection;" + r.hostPlayer.name)
 
         if ptype == "start_game":  # Начало игры
             p = getPlayer(self.client_address)

@@ -8,7 +8,7 @@ import enum
 host = '26.153.209.176'  # IP-адрес сервера. Вводится здесь.
 port = 777  # Порт можно оставить таким, маловероятно то, что он будет занят
 addr = (host, port)
-volume = 1  # Громкости музыки и звуков
+volume = 5  # Громкости музыки и звуков
 volume2 = 5
 udp_socket = socket(AF_INET, SOCK_DGRAM)
 
@@ -251,9 +251,9 @@ class ShotResult(pygame.sprite.Sprite):  # Анимация выстрела
 
 
 class GameResult(pygame.sprite.Sprite):  # Анимация победы или поражения
-    def __init__(self, group, mainGroup, result):
+    def __init__(self, group, result):
         super().__init__(group)
-        mainGroup.add(self)
+        self.doupdate = False
         self.clock = 0
         self.opacity = 0
         if result == "victory":
@@ -264,9 +264,10 @@ class GameResult(pygame.sprite.Sprite):  # Анимация победы или 
             loss.play()
         self.rect = self.image.get_rect()
         self.image.set_alpha(self.opacity)
+        self.doupdate = True
 
     def update(self):
-        if self.image is not None:
+        if self.doupdate:
             if 0 <= self.clock <= 15:
                 self.opacity += 17
                 self.image.set_alpha(self.opacity)
@@ -749,7 +750,6 @@ class Game(Window):
         self.ships = pygame.sprite.Group()
         self.buttons = pygame.sprite.Group()
         self.shots = pygame.sprite.Group()
-        self.gameResults = pygame.sprite.Group()
         self.ship_on_cursor = None
         self.cellsize = 30
         self.spectator = spectator
@@ -917,14 +917,10 @@ class Game(Window):
                 self.move = not bool(int(move))
         if ptype == "shot_result":
             result, i, j = packet.split(";")[1:]
-            if result == "miss":
-                splash.play()
-            elif result == "deny":
+            if result == "deny":
                 self.message = "You have already shot there!"
                 wrong.play()
                 return
-            elif result == "hit":
-                shot.play()
             self.animateShot(self.opponentField, int(i), int(j), result)
             self.activeCell = (None, None)
         if ptype == "got_shot":
@@ -965,8 +961,10 @@ class Game(Window):
     def animateShot(self, field, i, j, result):
         if result == "miss":
             shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/miss.png")
+            splash.play()
         elif result == "hit":
             shotresult = ShotResult(self.shots, self.sprites, field, i, j, "sprites/cross.png")
+            shot.play()
 
     def animateStart(self):
         self.mesText = ""
@@ -975,7 +973,7 @@ class Game(Window):
         self.nameDraw = False
         self.setShotButtonActive(False)
         self.leave_button.rect.x, self.leave_button.rect.y = 695, 750
-        animation = GameResult(self.gameResults, self.sprites, result)
+        animation = GameResult(self.sprites, result)
 
     def check_move(self):
         if self.ship_on_cursor is not None:
@@ -997,9 +995,8 @@ class Game(Window):
         if self.nameDraw:
             screen.blit(pygame.font.SysFont("comicsansms", 34).render(self.name2, False, color2), (600, 390))
             self.chat.draw()
-        if not self.spectator:
-            screen.blit(pygame.font.SysFont("comicsansms", 36).render(">", False, (0, 0, 0)), (900, 765))
-            self.inputMessage.draw(screen)
+        screen.blit(pygame.font.SysFont("comicsansms", 36).render(">", False, (0, 0, 0)), (900, 765))
+        self.inputMessage.draw(screen)
 
     def check_keypress(self, event):
         if not self.spectator:
@@ -1022,7 +1019,7 @@ def cikle():  # Параллельный поток для получения п
 
 
 pygame.init()
-shot = pygame.mixer.Sound('sounds/shot.wav')
+shot = pygame.mixer.Sound('sounds/shot.wav')  # Звуки и музыка
 shot.set_volume(volume2 * 0.1)
 wrong = pygame.mixer.Sound('sounds/wrong_cell.wav')
 wrong.set_volume(volume2 * 0.1)
