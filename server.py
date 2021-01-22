@@ -2,22 +2,22 @@ from socketserver import *
 import enum
 from random import choice, randint
 
-host = '26.153.209.176'
+host = '26.153.209.176'  # IP сервера в локальной сети
 port = 777
 addr = (host, port)
 socket = None
-players = []
-rooms = []
+players = []  # Все игроки
+rooms = []  # Все комнаты
 flag = 0
 
 
-class RoomStatus(enum.Enum):
+class RoomStatus(enum.Enum):  # Состояние комнаты (ожидание игроков/установка кораблей/игра)
     WAIT = 1
     SHIPSETTING = 2
     GAME = 3
 
 
-class CellType(enum.Enum):
+class CellType(enum.Enum):  # Содержимое клетки игрового поля
     Empty = 0
     Blocked = 11
     Shot = 12
@@ -34,13 +34,13 @@ class CellType(enum.Enum):
     Ship_1_4 = 10
 
 
-class Gamefield:
+class Gamefield:  # Игровое поле
     def __init__(self):
-        self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
+        self.field = [[CellType.Empty for j in range(10)] for i in range(10)]  # Само поле
         self.shipPositions = ""
         self.isEmpty = True
 
-    def setShips(self, string):
+    def setShips(self, string):  # Установка кораблей по данным пользователя
         self.shipPositions = string
         ships = string.split("$")
         for i in range(len(ships)):
@@ -48,7 +48,7 @@ class Gamefield:
             self.setShip(size, vertical, x, y, i + 1)
         self.isEmpty = False
 
-    def setShip(self, size, vertical, x, y, i):
+    def setShip(self, size, vertical, x, y, i):  # Установка корабля
         vertical = vertical == "True"
         if vertical:
             for j in range(int(size) + 2):
@@ -67,22 +67,22 @@ class Gamefield:
             for j in range(int(size)):
                 self.field[int(y)][int(x) + j] = CellType(i)
 
-    def clearField(self):
+    def clearField(self):  # Очистить поле
         self.field = [[CellType.Empty for j in range(10)] for i in range(10)]
         self.isEmpty = True
 
 
-class Player:
+class Player:  # Игрок
     def __init__(self, name, addr):
-        self.name = name
+        self.name = name  # Имя, IP и порт игрока
         self.addr = addr
         self.room = None
         players.append(self)
 
-    def sendPacket(self, socket, packet):
+    def sendPacket(self, socket, packet):  # Отправить данные игроку
         socket.sendto(packet.encode(), self.addr)
 
-    def disconnect(self):
+    def disconnect(self):  # Отключить игрока от сервера
         global players, rooms
         if self.room is not None:
             self.room.members.remove(self)
@@ -105,28 +105,28 @@ class Player:
             players.remove(self)
 
 
-class Room:
+class Room:  # Комната
     def __init__(self, hostPlayer):
-        self.name = hostPlayer.name
+        self.name = hostPlayer.name  # Установка игрока-хозяина комнаты
         self.addr = hostPlayer.addr
         self.hostPlayer = hostPlayer
-        self.members = ["", "", "", "", ""]
+        self.members = ["", "", "", "", ""]  # Игроки комнаты. Максимум 5. Пустая строка - свободный слот.
         self.status = RoomStatus.WAIT
-        self.connectPlayer(hostPlayer)
+        self.connectPlayer(hostPlayer)  # Подключение хозяина комнаты происходит сразу в init
         self.hostPlayer.sendPacket(socket, "got_host")
         self.field1 = Gamefield()
         self.field2 = Gamefield()
         self.move = None
         rooms.append(self)
 
-    def connectPlayer(self, player):
+    def connectPlayer(self, player):  # Подключить игрока
         self.members[self.members.index("")] = player
         player.room = self
         packet = "room_connection;" + str(self.name)
         player.sendPacket(socket, packet)
         self.update()
 
-    def setMove(self, move):
+    def setMove(self, move):  # Установка хода (то есть игрока, который делает ход)
         self.move = move
         self.members[move].sendPacket(socket, "move;your")
         for i in range(len(self.members)):
@@ -134,7 +134,7 @@ class Room:
                 if self.members[i] != "":
                     self.members[i].sendPacket(socket, "move;" + str(move))
 
-    def update(self):
+    def update(self):  # Обновление комнаты у игроков, когда игрок присоединяется или выходит
         packet = "room_update;"
         names = []
         for p in self.members:
@@ -146,12 +146,12 @@ class Room:
             if p != "":
                 p.sendPacket(socket, packet + ";".join(names))
 
-    def sendMessage(self, message):
+    def sendMessage(self, message):  # Отправить сообщение в чат
         for p in self.members:
             if p != "":
                 p.sendPacket(socket, "chat_update;" + message)
 
-    def kickPlayer(self, index):
+    def kickPlayer(self, index):  # Выгнать игрока из комнаты
         global players
         p = self.members[index]
         if p != "":
@@ -163,25 +163,26 @@ class Room:
             players.remove(p)
 
 
-def getPlayer(address):
+def getPlayer(address):  # Получить игрока по адресу
     for p in players:
         if p.addr == address:
             return p
 
 
-def getRoom(name):
+def getRoom(name):  # Получить комнату по имени хоста
     for r in rooms:
         if r.hostPlayer.name == name:
             return r
 
 
-class MyUDPHandler(DatagramRequestHandler):
+class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов от пользователей
     def handle(self):
         global flag, socket, players, rooms
         packet = self.request[0].decode()
         ptype = packet.split(";")[0]
-        socket = self.request[1]
-        if ptype == "connect":
+        socket = self.request[1]  # Получение пакета и декодирование
+        # Дальше огромный if else для каждого типа пакета. Не судите строго
+        if ptype == "connect":  # Подключение к серверу
             name = packet.split(";")[1]
             address = self.client_address
             for pl in players:
@@ -194,17 +195,17 @@ class MyUDPHandler(DatagramRequestHandler):
             else:
                 p = Player(name, address)
                 p.sendPacket(socket, "connectionAccept")
-        if ptype == "disconnect":
+        if ptype == "disconnect":  # Отключение от сервера
             p = getPlayer(self.client_address)
             if p is not None:
                 p.disconnect()
-        if ptype == "createroom":
+        if ptype == "createroom":  # Создание комнаты игроком
             p = getPlayer(self.client_address)
             if p is None:
                 socket.sendto("not_exist".encode(), self.client_address)
             else:
                 r = Room(p)
-        if ptype == "randomroom":
+        if ptype == "randomroom":  # Подключение к случайной комнате
             p = getPlayer(self.client_address)
             if p is None:
                 socket.sendto("not_exist".encode(), self.client_address)
@@ -216,7 +217,7 @@ class MyUDPHandler(DatagramRequestHandler):
                 else:
                     p.sendPacket(socket, "room_refuse;not_exist")
 
-        if ptype == "direct_connect":
+        if ptype == "direct_connect":  # Прямое подключение (по имени хоста)
             p = getPlayer(self.client_address)
             if p is not None:
                 r = getRoom(packet.split(";")[1])
@@ -232,7 +233,7 @@ class MyUDPHandler(DatagramRequestHandler):
             else:
                 socket.sendto("not_exist".encode(), self.client_address)
 
-        if ptype == "chat_message":
+        if ptype == "chat_message":  # Сообщение в чат
             message = ";".join(packet.split(";")[1:])
             p = getPlayer(self.client_address)
             if p is not None:
@@ -241,7 +242,7 @@ class MyUDPHandler(DatagramRequestHandler):
                     if not (r.status == RoomStatus.GAME and r.members.index(p) > 1):
                         r.sendMessage("{}: ".format(p.name) + message)
 
-        if ptype == "quit_room":
+        if ptype == "quit_room":  # Выход из комнаты
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -254,15 +255,15 @@ class MyUDPHandler(DatagramRequestHandler):
                             r.kickPlayer(i)
                         rooms.remove(r)
                 players.remove(p)
+        # Это вроде бы не нужно
+        # if ptype == "leave":
+        #     p = getPlayer(self.client_address)
+        #     if p is not None:
+        #         r = p.room
+        #         if r is not None:
+        #             p.sendPacket(socket, "room_connection;" + r.hostPlayer.name)
 
-        if ptype == "leave":
-            p = getPlayer(self.client_address)
-            if p is not None:
-                r = p.room
-                if r is not None:
-                    p.sendPacket(socket, "room_connection;" + r.hostPlayer.name)
-
-        if ptype == "start_game":
+        if ptype == "start_game":  # Начало игры
             p = getPlayer(self.client_address)
             if p.room.status == RoomStatus.WAIT and p.room.hostPlayer.addr == p.addr:
                 r = p.room
@@ -281,7 +282,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                 pl.sendPacket(socket, "game_start;spectator;" +
                                               r.members[0].name + ";" + r.members[1].name)
 
-        if ptype == "kickPlayer":
+        if ptype == "kickPlayer":  # Выгнать игрока
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -289,7 +290,7 @@ class MyUDPHandler(DatagramRequestHandler):
                     if r.hostPlayer.addr[0] == p.addr[0]:
                         if r.hostPlayer is not r.members[int(packet.split(";")[1])]:
                             r.kickPlayer(int(packet.split(";")[1]))
-        if ptype == "makeHost":
+        if ptype == "makeHost":  # Передать права хоста игроку
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -299,9 +300,10 @@ class MyUDPHandler(DatagramRequestHandler):
                             p.sendPacket(socket, "lost_host")
                             player = r.members[int(packet.split(";")[1])]
                             r.hostPlayer = player
+                            r.name = player.name
                             player.sendPacket(socket, "got_host")
                             r.sendMessage(player.name + " has become the host")
-        if ptype == "change_role":
+        if ptype == "change_role":  # Поменять местами игроков
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -312,7 +314,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                       + " and " + r.members[int(second)].name + " places")
                         r.members[int(first)], r.members[int(second)] = r.members[int(second)], r.members[int(first)]
                         r.update()
-        if ptype == "shipPositions":
+        if ptype == "shipPositions":  # Позиции кораблей
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -338,7 +340,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                 r.setMove(randint(0, 1))
                         except ValueError:
                             pass
-        if ptype == "shot":
+        if ptype == "shot":  # Выстрел. Самый страшный кусок кода в проекте.
             p = getPlayer(self.client_address)
             if p is not None:
                 r = p.room
@@ -413,7 +415,7 @@ class MyUDPHandler(DatagramRequestHandler):
                                             spectator.sendPacket(socket, "game_result;1")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # Запуск сервера
     server = UDPServer(addr, MyUDPHandler)
     print('starting server...')
     server.serve_forever()

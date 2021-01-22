@@ -5,16 +5,15 @@ import sys
 import os
 import enum
 
-host = '26.153.209.176'  # Адрес сервера, нужно вводить сюда
-port = 777
+host = '26.153.209.176'  # IP-адрес сервера. Вводится здесь.
+port = 777  # Порт можно оставить таким, маловероятно то, что он будет занят
 addr = (host, port)
-volume = 1
+volume = 1  # Громкости музыки и звуков
 volume2 = 5
 udp_socket = socket(AF_INET, SOCK_DGRAM)
-data = [0, '0']
 
 
-def load_image(name, colorkey=None):  # Загрузка картинок
+def load_image(name, colorkey=None):  # Загрузка картинок. Украдено из методички Яндекса, признаю.
     fullname = os.path.join(name)
     if not os.path.isfile(fullname):
         print(f"Файл с изображением '{fullname}' не найден")
@@ -84,7 +83,7 @@ class Gamefield(pygame.sprite.Sprite):  # Клетчатое поле для к�
             return None
         return x, y
 
-    def getClosest(self, x, y): # Получить ближайшую клетку по координатам
+    def getClosest(self, x, y):  # Получить ближайшую клетку по координатам
         if not (self.rect.x + 30 <= x <= self.rect.x + self.rect.width
                 and self.rect.y + 30 <= y <= self.rect.y + self.rect.height):
             return None
@@ -214,7 +213,7 @@ class Ship(pygame.sprite.Sprite):  # Класс корабля
                     return False
         return True
 
-    def setRed(self, red, force=False): # Установка красного вида корабля
+    def setRed(self, red, force=False):  # Установка красного вида корабля
         if red:
             image = load_image("sprites/ship-" + str(self.size) + "_red.png")
         else:
@@ -259,19 +258,22 @@ class GameResult(pygame.sprite.Sprite):  # Анимация победы или 
         self.opacity = 0
         if result == "victory":
             self.image = load_image("sprites/victory.png")
+            victory.play()
         else:
             self.image = load_image("sprites/loss.png")
+            loss.play()
         self.rect = self.image.get_rect()
         self.image.set_alpha(self.opacity)
 
     def update(self):
-        if 0 <= self.clock <= 15:
-            self.opacity += 17
+        if self.image is not None:
+            if 0 <= self.clock <= 15:
+                self.opacity += 17
+                self.image.set_alpha(self.opacity)
+            elif 75 <= self.clock <= 90:
+                self.opacity -= 17
             self.image.set_alpha(self.opacity)
-        elif 75 <= self.clock <= 90:
-            self.opacity -= 17
-        self.image.set_alpha(self.opacity)
-        self.clock += 1
+            self.clock += 1
 
 
 class InputBox:  # Ручной ввод
@@ -326,28 +328,28 @@ class Window:  # Класс окна
         self.buttons = pygame.sprite.Group()
         self.ptypes = []  # Виды принимаемых пакетов
 
-    def set(self): # Установка
+    def set(self):  # Установка
         global all_sprites
         self.sprites.draw(screen)
         self.sprites.update()
         all_sprites = self.sprites
 
-    def draw(self): # Отрисовка доп. элементов (не спрайтов)
+    def draw(self):  # Отрисовка доп. элементов (не спрайтов)
         pass
 
-    def check_click(self, event): # Событие нажатия
+    def check_click(self, event):  # Событие нажатия
         x, y = event.pos
         for b in self.buttons.sprites():
             if b.rect.collidepoint(x, y):
                 b.press()
 
-    def check_release(self, mouse_pos): # Событие отжатия
+    def check_release(self, mouse_pos):  # Событие отжатия
         pass
 
-    def check_move(self): # Событие движения
+    def check_move(self):  # Событие движения
         pass
 
-    def check_keypress(self, event): # Событие клавиатуры
+    def check_keypress(self, event):  # Событие клавиатуры
         pass
 
     def handlePacket(self, packet):  # Обработка пакета
@@ -443,6 +445,8 @@ class Nactroiki(Window):
         shot.set_volume(volume2 * 0.1)
         wrong.set_volume(volume2 * 0.1)
         splash.set_volume(volume2 * 0.1)
+        victory.set_volume(volume2 * 0.1)
+        loss.set_volume(volume2 * 0.1)
 
     def draw(self):
         screen.blit(self.musicText, (100, 100))
@@ -1004,18 +1008,15 @@ class Game(Window):
                     != "Type here" and self.inputMessage.text != "":
                 sendPacket("chat_message;" + self.inputMessage.text)
                 self.inputMessage.text = ""
-            # if event.key == pygame.K_w:
-            #     self.animateEnd("loss")
 
 
-def cikle(): # Параллельный поток для получения пакетов
+def cikle():  # Параллельный поток для получения пакетов
     while True:
         try:
             sms = udp_socket.recvfrom(1024)
             if sms[0].decode() == '':
                 continue
             activeWindow.handlePacket(sms[0].decode())
-            # print(sms[0].decode())
         except OSError:
             continue
 
@@ -1027,6 +1028,10 @@ wrong = pygame.mixer.Sound('sounds/wrong_cell.wav')
 wrong.set_volume(volume2 * 0.1)
 splash = pygame.mixer.Sound('sounds/splash.wav')
 splash.set_volume(volume2 * 0.1)
+victory = pygame.mixer.Sound('sounds/victory.mp3')
+victory.set_volume(volume2 * 0.1)
+loss = pygame.mixer.Sound('sounds/loss.mp3')
+loss.set_volume(volume2 * 0.1)
 
 pygame.display.set_caption('')
 height, width = 810, 1440
@@ -1035,15 +1040,15 @@ screen = pygame.display.set_mode(size)
 
 running = True
 
-all_sprites = pygame.sprite.Group() # Текущие спрайты
+all_sprites = pygame.sprite.Group()  # Текущие спрайты
 
-activeWindow = Menu() # Текущее окно
+activeWindow = Menu()  # Текущее окно
 activeWindow.set()
 
 FPS = 30
 
 clock = pygame.time.Clock()
-client_handler = threading.Thread( # Запуск параллельного потока
+client_handler = threading.Thread(  # Запуск параллельного потока
     target=cikle,
     args=(),
     daemon=True
