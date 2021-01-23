@@ -254,6 +254,8 @@ class GameResult(pygame.sprite.Sprite):  # Анимация победы или 
     def __init__(self, group, result):
         super().__init__(group)
         self.doupdate = False
+        self.image = load_image("sprites/loss.png")
+        self.rect = self.image.get_rect()
         self.clock = 0
         self.opacity = 0
         if result == "victory":
@@ -734,7 +736,7 @@ class Game(Window):
     def __init__(self, spectator=True, name1="", name2=""):
         super().__init__()
         self.ptypes = ["chat_update", "ships_accept", "move", "shot_result", "got_shot", "game_result",
-                       "room_connection"]
+                       "room_connection", "room_kick"]
         pygame.mixer.music.unload()
         pygame.mixer.music.load('sounds/bg_music2.mp3')
         pygame.mixer.music.set_volume(volume * 0.1)
@@ -769,9 +771,9 @@ class Game(Window):
                                                           (50, 50)))
         self.leave_button.remove()
         self.leave_button.press = self.leave
+        self.inputMessage = InputBox(910, 770, 400, 30, drawrect=False, text="Type here", lenlimit=30)
+        self.inputMessage.FONT = pygame.font.SysFont("comicsansms", 24)
         if not self.spectator:
-            self.inputMessage = InputBox(910, 770, 400, 30, drawrect=False, text="Type here", lenlimit=30)
-            self.inputMessage.FONT = pygame.font.SysFont("comicsansms", 24)
             self.acceptButton = Button(self.buttons, self.sprites, load_image("sprites/buttonAccept.png"))
             self.acceptButton.rect = self.acceptButton.rect.move(39 * self.cellsize, 10 * self.cellsize)
             self.acceptButton.press = self.accept
@@ -843,8 +845,7 @@ class Game(Window):
 
     def check_click(self, event):
         super().check_click(event)
-        if not self.spectator:
-            self.inputMessage.handle_event(event)
+        self.inputMessage.handle_event(event)
         if self.move:
             x, y = event.pos
             if self.opponentField.rect.collidepoint(x, y) and self.nameDraw:
@@ -903,6 +904,9 @@ class Game(Window):
         if ptype == "chat_update":
             message = packet.split(";")[1]
             self.chat.addLine(message)
+        if ptype == "room_kick":
+            activeWindow = RoomChoice()
+            activeWindow.set()
         if ptype == "move":
             move = packet.split(";")[1]
             if move == "your" and not self.spectator:
@@ -999,12 +1003,11 @@ class Game(Window):
         self.inputMessage.draw(screen)
 
     def check_keypress(self, event):
-        if not self.spectator:
-            self.inputMessage.handle_event(event)
-            if event.key == pygame.K_RETURN and self.inputMessage.active and self.inputMessage.text \
-                    != "Type here" and self.inputMessage.text != "":
-                sendPacket("chat_message;" + self.inputMessage.text)
-                self.inputMessage.text = ""
+        self.inputMessage.handle_event(event)
+        if event.key == pygame.K_RETURN and self.inputMessage.active and self.inputMessage.text \
+                != "Type here" and self.inputMessage.text != "":
+            sendPacket("chat_message;" + self.inputMessage.text)
+            self.inputMessage.text = ""
 
 
 def cikle():  # Параллельный поток для получения пакетов
@@ -1013,6 +1016,7 @@ def cikle():  # Параллельный поток для получения п
             sms = udp_socket.recvfrom(1024)
             if sms[0].decode() == '':
                 continue
+            print(sms[0].decode())
             activeWindow.handlePacket(sms[0].decode())
         except OSError:
             continue

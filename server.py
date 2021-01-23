@@ -85,21 +85,19 @@ class Player:  # Игрок
     def disconnect(self):  # Отключить игрока от сервера
         global players, rooms
         if self.room is not None:
-            self.room.members.remove(self)
-            self.room.update()
-            self.room.sendMessage(self.name + " left")
             if self.room.hostPlayer is self:
                 for i in range(len(self.room.members)):
                     self.room.kickPlayer(i)
                 rooms.remove(self.room)
-            if self.room.status == RoomStatus.SHIPSETTING or self.room.status == RoomStatus.GAME:
-                for p in self.room.members:
-                    if p != "":
-                        packet = "room_connection;" + str(self.name)
-                        p.sendPacket(socket, packet)
-                        self.room.update()
-                self.room.status = RoomStatus.WAIT
-                self.room.sendMessage("One of the players left, so the game was stopped")
+            else:
+                self.room.members.remove(self)
+                self.room.update()
+                self.room.sendMessage(self.name + " left")
+                if self.room.status == RoomStatus.SHIPSETTING or self.room.status == RoomStatus.GAME:
+                    for i in range(len(self.room.members)):
+                        p = self.room.members[i]
+                        if p != "":
+                            self.room.kickPlayer(i)
 
         if self in players:
             players.remove(self)
@@ -161,6 +159,10 @@ class Room:  # Комната
             self.update()
             p.room = None
             players.remove(p)
+
+    def fillMembersList(self):
+        while len(self.members) < 5:
+            self.members.append("")
 
 
 def getPlayer(address):  # Получить игрока по адресу
@@ -246,14 +248,17 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
             if p is not None:
                 r = p.room
                 if r is not None:
-                    r.members.remove(p)
-                    r.update()
-                    r.sendMessage(p.name + " left")
                     if r.hostPlayer is p:
                         for i in range(len(r.members)):
                             r.kickPlayer(i)
                         rooms.remove(r)
-                players.remove(p)
+                    else:
+                        print(r.members)
+                        r.members.remove(p)
+                        r.fillMembersList()
+                        r.update()
+                        r.sendMessage(p.name + " left")
+                        players.remove(p)
 
         if ptype == "start_game":  # Начало игры
             p = getPlayer(self.client_address)
