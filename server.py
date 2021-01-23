@@ -93,7 +93,7 @@ class Player:  # Игрок
                 self.room.members.remove(self)
                 self.room.update()
                 self.room.sendMessage(self.name + " left")
-                if self.room.status == RoomStatus.SHIPSETTING or self.room.status == RoomStatus.GAME:
+                if self.room.status != RoomStatus.WAIT and self.room.members.index(self) <= 1:
                     for i in range(len(self.room.members)):
                         p = self.room.members[i]
                         if p != "":
@@ -241,7 +241,49 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
             if p is not None:
                 r = p.room
                 if r is not None:
-                    r.sendMessage("{}: ".format(p.name) + message)
+                    if not message.startswith("/"):  # Обработка команд в чате
+                        r.sendMessage("{}: ".format(p.name) + message)
+                    else:
+                        if message.startswith("/leave"):
+                            if r.hostPlayer is p:
+                                for i in range(len(r.members)):
+                                    r.kickPlayer(i)
+                                rooms.remove(r)
+                            else:
+                                if r.status != RoomStatus.WAIT and r.members.index(p) <= 1:
+                                    for i in range(len(r.members)):
+                                        pl = r.members[i]
+                                        if pl != "":
+                                            r.kickPlayer(i)
+                                else:
+                                    r.members.remove(p)
+                                    r.fillMembersList()
+                                    r.update()
+                                    r.sendMessage(p.name + " left")
+                                    players.remove(p)
+                        if r.hostPlayer is p:
+                            if message.startswith("/break") and r.status != RoomStatus.WAIT:
+                                for i in range(len(r.members)):
+                                    r.kickPlayer(i)
+                                rooms.remove(r)
+                            pname = message.split()
+                            if len(pname) > 1:
+                                pname = " ".join(pname[1:])
+                                index = -1
+                                for i in range(len(r.members)):
+                                    if r.members[i] != "":
+                                        if r.members[i].name == pname:
+                                            index = i
+                                            break
+                                if message.startswith("/kick") and index != -1:
+                                    r.kickPlayer(index)
+                                if message.startswith("/makehost") and index != -1:
+                                    p.sendPacket(socket, "lost_host")
+                                    player = r.members[index]
+                                    r.hostPlayer = player
+                                    r.name = player.name
+                                    player.sendPacket(socket, "got_host")
+                                    r.sendMessage(player.name + " has become the host")
 
         if ptype == "quit_room":  # Выход из комнаты
             p = getPlayer(self.client_address)
@@ -253,11 +295,17 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
                             r.kickPlayer(i)
                         rooms.remove(r)
                     else:
-                        r.members.remove(p)
-                        r.fillMembersList()
-                        r.update()
-                        r.sendMessage(p.name + " left")
-                        players.remove(p)
+                        if r.status != RoomStatus.WAIT and r.members.index(p) <= 1:
+                            for i in range(len(r.members)):
+                                pl = r.members[i]
+                                if pl != "":
+                                    r.kickPlayer(i)
+                        else:
+                            r.members.remove(p)
+                            r.fillMembersList()
+                            r.update()
+                            r.sendMessage(p.name + " left")
+                            players.remove(p)
 
         if ptype == "start_game":  # Начало игры
             p = getPlayer(self.client_address)
