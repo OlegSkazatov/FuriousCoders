@@ -253,7 +253,6 @@ class MyUDPHandler(DatagramRequestHandler):  # Обработка пакетов
                             r.kickPlayer(i)
                         rooms.remove(r)
                     else:
-                        print(r.members)
                         r.members.remove(p)
                         r.fillMembersList()
                         r.update()

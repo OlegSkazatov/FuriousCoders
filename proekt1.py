@@ -1016,7 +1016,6 @@ def cikle():  # Параллельный поток для получения п
             sms = udp_socket.recvfrom(1024)
             if sms[0].decode() == '':
                 continue
-            print(sms[0].decode())
             activeWindow.handlePacket(sms[0].decode())
         except OSError:
             continue
