@@ -90,14 +90,15 @@ class Player:  # Игрок
                     self.room.kickPlayer(i)
                 rooms.remove(self.room)
             else:
-                self.room.members.remove(self)
-                self.room.update()
-                self.room.sendMessage(self.name + " left")
                 if self.room.status != RoomStatus.WAIT and self.room.members.index(self) <= 1:
                     for i in range(len(self.room.members)):
                         p = self.room.members[i]
                         if p != "":
                             self.room.kickPlayer(i)
+                else:
+                    self.room.members.remove(self)
+                    self.room.update()
+                    self.room.sendMessage(self.name + " left")
 
         if self in players:
             players.remove(self)
