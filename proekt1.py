@@ -418,7 +418,7 @@ class Nactroiki(Window):
             'Громкость:  1  2  3  4  5  6  7  8  9  10    (Музыка)', False,
             (0, 0, 0))
         self.soundText = pygame.font.SysFont('comicsansms', 45).render(
-            'Громкость:  1  2  3  4  5  6  7  8  9  10    (Музыка)',
+            'Громкость:  1  2  3  4  5  6  7  8  9  10    (Звуки)',
             False, (0, 0, 0))
         self.setVolume()
         pygame.mixer.music.set_volume(volume * 0.1)
